@@ -1,0 +1,36 @@
+# BlinkUI build artifacts
+.blink/
+build/
+dist/
+*.egg-info/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# C build artifacts
+runtime/build/
+*.o
+*.a
+
+# Test files
+test_*.py
+
+# Test app
+testapp/
+
+# Environment
+.env
+.venv
+venv/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
