@@ -1,119 +1,55 @@
-# ─────────────────────────────────────────
-# blink run
-# Runs the BlinkUI app
-# ─────────────────────────────────────────
-
 import os
 import sys
-import time
-from pathlib import Path
+import subprocess
+import threading
 
 
-def cmd_run(hot: bool = False, device: bool = False):
-    print(f"""
+def run_command(args):
+    hot    = '--hot' in args
+    device = '--device' in args
+
+    print("""
 ╔══════════════════════════════════════════╗
-║            BlinkUI Runner                ║
-╚══════════════════════════════════════════╝
-""")
+║           BlinkUI CLI v0.1.0             ║
+║   Build mobile apps in pure Python       ║
+╚══════════════════════════════════════════╝""")
 
-    # check we are inside a BlinkUI project
-    if not Path("blink.toml").exists():
-        print("[blink] Error: no blink.toml found.")
-        print("  Are you inside a BlinkUI project?")
-        print("  Run: blink new myapp")
+    if not os.path.exists('main.py'):
+        print("✗ No BlinkUI app found. Run 'blink new <appname>' first.")
         return
 
-    if not Path("main.py").exists():
-        print("[blink] Error: no main.py found.")
-        return
-
-    mode = "device" if device else "simulator"
-    reload = "hot reload enabled" if hot else ""
-
-    print(f"[blink] Starting app...")
-    print(f"[blink] Mode:   {mode}")
     if hot:
-        print(f"[blink] Hot reload: enabled")
-        print(f"[blink] Save any file to reload instantly")
+        print("🔥 Hot reload enabled")
+        _start_hot_reload()
 
-    print(f"[blink] Running main.py\n")
-    print("─" * 44)
-
-    # add current dir to path so imports work
-    sys.path.insert(0, str(Path.cwd()))
-
-    if hot:
-        _run_with_hot_reload()
+    if device:
+        print("📱 Running on connected device...")
     else:
-        _run_once()
+        print("🚀 Running app...")
 
+    # add .blink/packages to path
+    blink_packages = os.path.join(os.getcwd(), '.blink', 'packages')
+    if os.path.exists(blink_packages):
+        sys.path.insert(0, blink_packages)
 
-def _run_once():
-    """Run the app once."""
+    # run the app
     try:
-        import importlib
-        import main
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("main", "main.py")
+        mod  = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
     except Exception as e:
-        print(f"\n[blink] Error: {e}")
+        print(f"✗ Error running app: {e}")
 
 
-def _run_with_hot_reload():
-    """Watch files and reload on change."""
-    import importlib
-    import importlib.util
-
-    print("[blink] Watching for file changes...\n")
-
-    # track file modification times
-    def get_mtimes():
-        mtimes = {}
-        for ext in ("*.py",):
-            for path in Path(".").rglob(ext):
-                try:
-                    mtimes[str(path)] = path.stat().st_mtime
-                except Exception:
-                    pass
-        return mtimes
-
-    last_mtimes = get_mtimes()
-
-    # run initially
+def _start_hot_reload():
     try:
-        import main
+        from blinkui.hotreload.server import HotReloadServer
+        project_dir = os.getcwd()
+        server = HotReloadServer(project_dir)
+        thread = threading.Thread(target=server.start, daemon=True)
+        thread.start()
+        print(f"🔥 Hot reload server listening on port 8974")
+        print(f"   Connect your device to the same WiFi network")
     except Exception as e:
-        print(f"[blink] Error: {e}")
-
-    # watch loop
-    try:
-        while True:
-            time.sleep(0.5)
-            current_mtimes = get_mtimes()
-
-            changed = [
-                f for f, t in current_mtimes.items()
-                if last_mtimes.get(f) != t
-            ]
-
-            if changed:
-                for f in changed:
-                    print(f"\n[blink] Changed: {f}")
-                print("[blink] Reloading...\n")
-                print("─" * 44)
-
-                # reload all changed modules
-                mods_to_reload = [
-                    name for name, mod in sys.modules.items()
-                    if hasattr(mod, "__file__")
-                    and mod.__file__
-                    and any(f in mod.__file__ for f in changed)
-                ]
-                for mod_name in mods_to_reload:
-                    try:
-                        importlib.reload(sys.modules[mod_name])
-                    except Exception:
-                        pass
-
-                last_mtimes = current_mtimes
-
-    except KeyboardInterrupt:
-        print("\n[blink] Stopped.")
+        print(f"⚠ Hot reload unavailable: {e}")

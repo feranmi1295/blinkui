@@ -1,16 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#define PY_SSIZE_T_CLEAN
+#include <Python.h>
 #include "blinkui.h"
 #include "reconciler.h"
 #include "events.h"
-#include "../animation/animation.h"
-
-#ifndef NO_PYTHON
-#define PY_SSIZE_T_CLEAN
-#include <Python.h>
 #include "py_host.h"
-#endif
+#include "../animation/animation.h"
 
 /* ─────────────────────────────────────────
    Runtime initialization
