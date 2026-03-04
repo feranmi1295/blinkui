@@ -1,35 +1,30 @@
-# BlinkUI build artifacts
-.blink/
-build/
-dist/
-*.egg-info/
-
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
 *.so
 
-# C build artifacts
-runtime/build/
-*.o
-*.a
-
-# Test files
+# BlinkUI
+.blink/
+testapp/
 test_*.py
 
-# Test app
-testapp/
+# MkDocs
+site/
 
-# Environment
-.env
-.venv
-venv/
+# Android
+android/.gradle/
+android/.idea/
+android/build/
+android/local.properties
+android/wget-log*
+android/gradle/wrapper/dists/
 
-# VS Code
-.vscode/
+# Backup files
+*.bak
 
 # OS
 .DS_Store
