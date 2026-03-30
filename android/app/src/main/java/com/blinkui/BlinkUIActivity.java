@@ -8,133 +8,101 @@ import android.util.Log;
 import android.view.View;
 import android.widget.LinearLayout;
 
+import com.chaquo.python.PyObject;
+import com.chaquo.python.Python;
+import com.chaquo.python.android.AndroidPlatform;
+
 import org.json.JSONObject;
 
-/**
- * The main Android Activity for BlinkUI apps.
- * Initializes the C runtime, starts Python,
- * and renders the component tree.
- */
 public class BlinkUIActivity extends Activity {
 
-    private static final String TAG       = "BlinkUI";
-    private static final int    FRAME_MS  = 16; // 60fps
+    private static final String TAG      = "BlinkUI";
+    private static final int    FRAME_MS = 16;
 
     private BlinkUIBridge    bridge;
     private ComponentFactory factory;
     private LinearLayout     rootView;
     private Handler          handler;
-    private String           currentTree;
+
+    // Python module running on device
+    private PyObject pyModule;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // ── init bridge ──
         bridge  = BlinkUIBridge.getInstance();
         factory = new ComponentFactory(this);
         handler = new Handler(Looper.getMainLooper());
 
-        // ── create root view ──
         rootView = new LinearLayout(this);
         rootView.setOrientation(LinearLayout.VERTICAL);
         setContentView(rootView);
 
-        // ── init C runtime ──
-        String result = bridge.nativeInit();
-        Log.i(TAG, result);
+        bridge.nativeInit();
+        bridge.nativeSetActivity(this);
 
-        // ── start animation loop ──
+        // ── Start Python ──
+        if (!Python.isStarted()) {
+            Python.start(new AndroidPlatform(this));
+        }
+        Python py = Python.getInstance();
+        pyModule = py.getModule("main_screen");
+        Log.i(TAG, "Python started — main_screen loaded");
+
         startAnimationLoop();
 
-        // ── render initial screen ──
-        // In production this comes from Python via bk_py_call
-        // For now render a test tree
-        renderTestScreen();
+        // ── Render initial tree from Python ──
+        String initialTree = pyModule.callAttr("get_initial_tree").toString();
+        renderTree(initialTree);
     }
 
     /**
-     * Called when Python produces a new component tree.
-     * Runs on UI thread so Android views can be created.
+     * Called by C runtime (and directly) to update UI.
+     * Always runs on UI thread.
      */
     public void renderTree(String treeJson) {
         handler.post(() -> {
             try {
-                currentTree = treeJson;
-                bridge.nativeRender(treeJson);
-
                 JSONObject tree = new JSONObject(treeJson);
                 View       view = factory.buildView(tree, 1);
-
                 rootView.removeAllViews();
                 rootView.addView(view);
-
-                Log.i(TAG, "Tree rendered successfully");
             } catch (Exception e) {
                 Log.e(TAG, "Render error: " + e.getMessage());
             }
         });
     }
 
-    /** 60fps animation loop */
+    /**
+     * Called by ComponentFactory when a button is tapped.
+     * Passes event to Python → gets new tree → re-renders.
+     */
+    public void handleEvent(int nodeId, int eventType) {
+        // run off UI thread so Python can do heavy work
+        new Thread(() -> {
+            try {
+                String newTree = pyModule
+                    .callAttr("on_event", nodeId, eventType)
+                    .toString();
+                renderTree(newTree);
+            } catch (Exception e) {
+                Log.e(TAG, "Python event error: " + e.getMessage());
+            }
+        }).start();
+    }
+
     private void startAnimationLoop() {
         handler.post(new Runnable() {
             long lastTime = System.currentTimeMillis();
-
             @Override
             public void run() {
-                long now     = System.currentTimeMillis();
-                long delta   = now - lastTime;
-                lastTime     = now;
-
-                bridge.nativeTick(delta);
+                long now = System.currentTimeMillis();
+                bridge.nativeTick(now - lastTime);
+                lastTime = now;
                 handler.postDelayed(this, FRAME_MS);
             }
         });
-    }
-
-    /** Test render — replace with Python output in production */
-    private void renderTestScreen() {
-        String testTree = "{"
-            + "\"type\":\"VStack\","
-            + "\"padding\":[24,24,24,24],"
-            + "\"spacing\":16,"
-            + "\"background\":\"#F2F2F7\","
-            + "\"corner_radius\":0,"
-            + "\"opacity\":1.0,"
-            + "\"visible\":true,"
-            + "\"margin\":[0,0,0,0],"
-            + "\"children\":["
-            + "  {\"type\":\"Heading\","
-            + "   \"content\":\"Hello from BlinkUI\","
-            + "   \"font_size\":28,\"bold\":true,"
-            + "   \"color\":\"#1C1C1E\","
-            + "   \"padding\":[0,0,0,0],"
-            + "   \"margin\":[0,0,0,0],"
-            + "   \"opacity\":1.0,\"visible\":true,"
-            + "   \"children\":[]},"
-            + "  {\"type\":\"Text\","
-            + "   \"content\":\"Built with Python and C\","
-            + "   \"font_size\":16,"
-            + "   \"color\":\"#8E8E93\","
-            + "   \"padding\":[0,0,0,0],"
-            + "   \"margin\":[0,0,0,0],"
-            + "   \"opacity\":1.0,\"visible\":true,"
-            + "   \"children\":[]},"
-            + "  {\"type\":\"Button\","
-            + "   \"label\":\"Get Started\","
-            + "   \"background\":\"#007AFF\","
-            + "   \"color\":\"#FFFFFF\","
-            + "   \"corner_radius\":12,"
-            + "   \"font_size\":16,"
-            + "   \"bold\":true,"
-            + "   \"padding\":[14,20,14,20],"
-            + "   \"margin\":[0,0,0,0],"
-            + "   \"opacity\":1.0,\"visible\":true,"
-            + "   \"children\":[]}"
-            + "]}";
-
-        renderTree(testTree);
     }
 
     @Override

@@ -121,4 +121,46 @@ void bk_node_set_text(BKNode* node, const char* text);
 /* Set background color */
 void bk_node_set_background(BKNode* node, uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 
+/* Set the render callback (called by Android bridge) */
+void bk_set_render_callback(void (*cb)(void* screen));
+
+/* ─────────────────────────────────────────
+   High-level component API
+   Used by transpiler-generated C code
+───────────────────────────────────────── */
+
+/* Layout components */
+BKNode* bk_vstack(BKNode** children, int count, int node_id);
+BKNode* bk_hstack(BKNode** children, int count, int node_id);
+BKNode* bk_zstack(BKNode** children, int count, int node_id);
+BKNode* bk_scroll(BKNode** children, int count, int node_id);
+BKNode* bk_card(BKNode** children, int count, int node_id);
+
+/* Text components */
+BKNode* bk_text(const char* content, int node_id);
+BKNode* bk_heading(const char* content, int node_id);
+BKNode* bk_label(const char* content, int node_id);
+
+/* Interactive components */
+BKNode* bk_button(const char* label, int node_id);
+BKNode* bk_textfield(const char* placeholder, int node_id);
+BKNode* bk_toggle(int value, int node_id);
+BKNode* bk_slider(float value, int node_id);
+
+/* Media */
+BKNode* bk_image(const char* src, int node_id);
+
+/* Utility */
+BKNode* bk_spacer(int node_id);
+BKNode* bk_divider(int node_id);
+
+/* ─────────────────────────────────────────
+   Render request
+   Called by event handlers after state change
+───────────────────────────────────────── */
+void bk_request_render(void* screen);
+
+/* Set the render callback (called by Android bridge) */
+void bk_set_render_callback(void (*cb)(void* screen));
+
 #endif /* BLINKUI_H */
