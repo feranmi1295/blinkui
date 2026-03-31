@@ -172,15 +172,16 @@ BKNode* bk_divider(int node_id) {
 
 /* ── Render request ── */
 
-// Global render callback set by Android bridge
+// bk_request_render is implemented in app_bridge.c for Android
+// and in the desktop runtime for Linux builds
+#ifndef ANDROID
 static void (*g_render_callback)(void* screen) = NULL;
-
 void bk_set_render_callback(void (*cb)(void* screen)) {
     g_render_callback = cb;
 }
-
 void bk_request_render(void* screen) {
     if (g_render_callback) {
         g_render_callback(screen);
     }
 }
+#endif

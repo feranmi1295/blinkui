@@ -1,1 +1,0 @@
-/home/abiodunidris/Desktop/BlinkUI/blinkui/android/app/src/main/jni/CMakeLists.txt

@@ -2,12 +2,15 @@ cmake_minimum_required(VERSION 3.22)
 project(blinkui_bridge)
 
 set(RUNTIME_DIR /home/abiodunidris/Desktop/BlinkUI/blinkui/runtime)
+set(GENERATED_DIR /home/abiodunidris/Desktop/BlinkUI/blinkui/testapp/.blink/generated/c)
 
 add_library(
     blinkui_bridge
     SHARED
-    bridge.c
-    ${RUNTIME_DIR}/core/blinkui.c
+    app_bridge.c
+    ${GENERATED_DIR}/HomeScreen.c
+    ${GENERATED_DIR}/DetailScreen.c
+    ${RUNTIME_DIR}/core/components.c
     ${RUNTIME_DIR}/core/reconciler.c
     ${RUNTIME_DIR}/core/events.c
     ${RUNTIME_DIR}/animation/animation.c

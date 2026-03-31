@@ -386,6 +386,18 @@ void {screen.name}_{handler.name}({screen.name}* self) {{
 '''
 
     def _gen_stmt(self, stmt, screen) -> str:
+        # self.navigate("screen") → bk_navigate
+        if isinstance(stmt, ast.Expr):
+            val = stmt.value
+            if isinstance(val, ast.Call):
+                if isinstance(val.func, ast.Attribute):
+                    if val.func.attr == "navigate" and val.args:
+                        if isinstance(val.args[0], ast.Constant):
+                            screen = val.args[0].value
+                            return f'extern void bk_navigate(int screen_index); bk_navigate(1); /* navigate to {screen} */'
+                    if val.func.attr == "pop":
+                        return "extern void bk_navigate(int screen_index); bk_navigate(0);"
+
         # self.count += 1
         if isinstance(stmt, ast.AugAssign):
             target = stmt.target
@@ -408,6 +420,18 @@ void {screen.name}_{handler.name}({screen.name}* self) {{
                 if sv and sv.inferred_type == "char":
                     return f'strncpy(self->{attr}, {val}, 255);'
                 return f"self->{attr} = {val};"
+
+        # self._navigator.pop() → bk_navigate(0)
+        if isinstance(stmt, ast.Expr):
+            val = stmt.value
+            if isinstance(val, ast.Call):
+                if isinstance(val.func, ast.Attribute):
+                    if val.func.attr == "pop":
+                        return "extern void bk_navigate(int screen_index); bk_navigate(0);"
+                    if val.func.attr == "navigate" and val.args:
+                        if isinstance(val.args[0], ast.Constant):
+                            screen = val.args[0].value
+                            return f'extern void bk_navigate(int screen_index); bk_navigate(1); /* {screen} */'
 
         # if self.count > 0:
         if isinstance(stmt, ast.If):

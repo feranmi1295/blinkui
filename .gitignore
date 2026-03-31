@@ -29,3 +29,27 @@ android/gradle/wrapper/dists/
 # OS
 .DS_Store
 Thumbs.db
+
+# Android build cache
+android/app/.cxx/
+android/app/build/
+android/build/
+*.ninja
+*.ninja_deps
+*.ninja_log
+compile_commands.json
+compile_commands.json.bin
+configure_fingerprint.bin
+CMakeCache.txt
+
+# Generated C (rebuilt by transpiler)
+testapp/.blink/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.eggs/
+*.egg-info/
+dist/
+build/

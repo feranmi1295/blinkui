@@ -1,170 +1,114 @@
-# ─────────────────────────────────────────
-# Theme system
-# One object controls the entire app's
-# visual identity
-# ─────────────────────────────────────────
+"""
+BlinkUI Theme System
+
+BlinkUI's design language:
+- Dark by default
+- Electric green accent
+- Sharp, technical, precise
+- No unnecessary decoration
+"""
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+@dataclass
+class BlinkTheme:
+    # ── Core colors ──
+    background:   str = "#0F0F0F"   # near black
+    surface:      str = "#1A1A1A"   # card / elevated surfaces
+    surface_high: str = "#242424"   # inputs, selected states
+    border:       str = "#2A2A2A"   # subtle borders
+
+    # ── Accent ──
+    accent:       str = "#00FF88"   # electric green — BlinkUI signature
+    accent_dim:   str = "#00CC6A"   # pressed state
+    accent_muted: str = "#003D20"   # backgrounds behind accent
+
+    # ── Text ──
+    text:         str = "#FFFFFF"   # primary text
+    text_secondary: str = "#999999" # secondary / labels
+    text_muted:   str = "#555555"   # placeholder / disabled
+    text_on_accent: str = "#0F0F0F" # text on top of accent color
+
+    # ── Semantic colors ──
+    danger:       str = "#FF3B30"
+    warning:      str = "#FF9500"
+    success:      str = "#00FF88"   # same as accent
+    info:         str = "#0A84FF"
+
+    # ── Spacing ──
+    spacing_xs:   int = 4
+    spacing_sm:   int = 8
+    spacing_md:   int = 16
+    spacing_lg:   int = 24
+    spacing_xl:   int = 32
+
+    # ── Typography ──
+    font_xs:      int = 11
+    font_sm:      int = 13
+    font_md:      int = 16
+    font_lg:      int = 20
+    font_xl:      int = 28
+    font_xxl:     int = 36
+
+    # ── Shape ──
+    radius_sm:    int = 6
+    radius_md:    int = 12
+    radius_lg:    int = 20
+    radius_full:  int = 999  # pill shape
 
 
-# iOS inspired default colors
-_DEFAULT_LIGHT = {
-    "primary":          "#007AFF",   # iOS blue
-    "primary_dark":     "#0055B3",
-    "secondary":        "#5856D6",   # iOS purple
-    "success":          "#34C759",   # iOS green
-    "warning":          "#FF9500",   # iOS orange
-    "danger":           "#FF3B30",   # iOS red
-    "background":       "#F2F2F7",   # iOS light background
-    "surface":          "#FFFFFF",   # card / sheet background
-    "text":             "#1C1C1E",   # primary text
-    "text_secondary":   "#8E8E93",   # secondary text
-    "text_tertiary":    "#AEAEB2",   # placeholder text
-    "border":           "#E5E5EA",   # dividers and borders
-    "overlay":          "rgba(0,0,0,0.4)",
-}
+# ── Global theme instance ──
+_current_theme = BlinkTheme()
 
-_DEFAULT_DARK = {
-    "primary":          "#0A84FF",
-    "primary_dark":     "#0055B3",
-    "secondary":        "#5E5CE6",
-    "success":          "#30D158",
-    "warning":          "#FF9F0A",
-    "danger":           "#FF453A",
-    "background":       "#000000",
-    "surface":          "#1C1C1E",
-    "text":             "#FFFFFF",
-    "text_secondary":   "#8E8E93",
-    "text_tertiary":    "#636366",
-    "border":           "#38383A",
-    "overlay":          "rgba(0,0,0,0.6)",
-}
+def get_theme() -> BlinkTheme:
+    return _current_theme
 
+def set_theme(theme: BlinkTheme):
+    global _current_theme
+    _current_theme = theme
 
-class Palette:
-    """A set of colors for one color mode."""
+# ── Preset themes ──
 
-    def __init__(self, colors: dict):
-        self._colors = colors
+def dark_theme() -> BlinkTheme:
+    """BlinkUI default — dark, electric green"""
+    return BlinkTheme()
 
-    def __getattr__(self, name):
-        if name.startswith("_"):
-            raise AttributeError(name)
-        return self._colors.get(name, "#000000")
+def light_theme() -> BlinkTheme:
+    """Light variant"""
+    return BlinkTheme(
+        background    = "#F5F5F5",
+        surface       = "#FFFFFF",
+        surface_high  = "#EFEFEF",
+        border        = "#E0E0E0",
+        text          = "#0F0F0F",
+        text_secondary= "#666666",
+        text_muted    = "#AAAAAA",
+        text_on_accent= "#FFFFFF",
+    )
 
-    def get(self, key, fallback="#000000"):
-        return self._colors.get(key, fallback)
+def ocean_theme() -> BlinkTheme:
+    """Deep blue variant"""
+    return BlinkTheme(
+        background    = "#050D18",
+        surface       = "#0A1628",
+        surface_high  = "#112240",
+        border        = "#1E3A5F",
+        accent        = "#00D4FF",
+        accent_dim    = "#00AACC",
+        accent_muted  = "#001F2E",
+        text_on_accent= "#050D18",
+    )
 
-
-class Theme:
-    """
-    Controls the entire visual identity of a BlinkUI app.
-
-    Usage — default iOS theme:
-        App(entry=HomeScreen).run()
-
-    Usage — custom theme:
-        theme = Theme(
-            primary="#6C63FF",
-            font="Poppins",
-            radius=16
-        )
-        App(entry=HomeScreen, theme=theme).run()
-
-    Usage — full dark/light control:
-        theme = Theme(
-            light={"primary": "#007AFF", "background": "#FFFFFF"},
-            dark={"primary":  "#0A84FF", "background": "#000000"}
-        )
-    """
-
-    def __init__(
-        self,
-        primary=None,
-        secondary=None,
-        success=None,
-        warning=None,
-        danger=None,
-        background=None,
-        surface=None,
-        text=None,
-        font="SF Pro Display",
-        font_mono="SF Mono",
-        radius=12,
-        light: dict = None,
-        dark:  dict  = None,
-    ):
-        # build light palette
-        light_colors = dict(_DEFAULT_LIGHT)
-        if light:
-            light_colors.update(light)
-
-        # apply individual overrides to both modes
-        overrides = {
-            k: v for k, v in {
-                "primary":    primary,
-                "secondary":  secondary,
-                "success":    success,
-                "warning":    warning,
-                "danger":     danger,
-                "background": background,
-                "surface":    surface,
-                "text":       text,
-            }.items() if v is not None
-        }
-        light_colors.update(overrides)
-
-        # build dark palette
-        dark_colors = dict(_DEFAULT_DARK)
-        if dark:
-            dark_colors.update(dark)
-        dark_colors.update(overrides)
-
-        self.light     = Palette(light_colors)
-        self.dark      = Palette(dark_colors)
-        self.font      = font
-        self.font_mono = font_mono
-        self.radius    = radius
-
-        # active palette — switches based on system preference
-        # on device this reads the OS setting
-        # for now default to light
-        self._mode     = "light"
-        self.colors    = self.light
-
-    def set_mode(self, mode: str):
-        """Switch between light and dark mode."""
-        if mode not in ("light", "dark"):
-            return
-        self._mode  = mode
-        self.colors = self.light if mode == "light" else self.dark
-        print(f"[Theme] Switched to {mode} mode")
-
-    def toggle_mode(self):
-        """Toggle between light and dark."""
-        self.set_mode("dark" if self._mode == "light" else "light")
-
-    def to_dict(self):
-        return {
-            "mode":      self._mode,
-            "font":      self.font,
-            "radius":    self.radius,
-            "primary":   self.colors.primary,
-            "background": self.colors.background,
-            "surface":   self.colors.surface,
-            "text":      self.colors.text,
-        }
-
-    def __repr__(self):
-        return f"<Theme mode={self._mode} primary={self.colors.primary}>"
-
-
-# global default theme — used when developer doesn't specify one
-_default_theme = Theme()
-
-
-def get_theme() -> Theme:
-    return _default_theme
-
-
-def set_theme(theme: Theme):
-    global _default_theme
-    _default_theme = theme
+def ember_theme() -> BlinkTheme:
+    """Warm dark variant"""
+    return BlinkTheme(
+        background    = "#0F0A08",
+        surface       = "#1A1208",
+        surface_high  = "#241A0A",
+        border        = "#3D2A10",
+        accent        = "#FF6B00",
+        accent_dim    = "#CC5500",
+        accent_muted  = "#2E1800",
+        text_on_accent= "#0F0A08",
+    )

@@ -7,11 +7,6 @@ import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.widget.LinearLayout;
-
-import com.chaquo.python.PyObject;
-import com.chaquo.python.Python;
-import com.chaquo.python.android.AndroidPlatform;
-
 import org.json.JSONObject;
 
 public class BlinkUIActivity extends Activity {
@@ -24,9 +19,6 @@ public class BlinkUIActivity extends Activity {
     private LinearLayout     rootView;
     private Handler          handler;
 
-    // Python module running on device
-    private PyObject pyModule;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -37,30 +29,26 @@ public class BlinkUIActivity extends Activity {
 
         rootView = new LinearLayout(this);
         rootView.setOrientation(LinearLayout.VERTICAL);
+        rootView.setBackgroundColor(android.graphics.Color.parseColor("#0F0F0F"));
         setContentView(rootView);
 
-        bridge.nativeInit();
-        bridge.nativeSetActivity(this);
+        // dark status bar
+        getWindow().setStatusBarColor(android.graphics.Color.parseColor("#0F0F0F"));
+        getWindow().getDecorView().setSystemUiVisibility(0);
 
-        // ── Start Python ──
-        if (!Python.isStarted()) {
-            Python.start(new AndroidPlatform(this));
-        }
-        Python py = Python.getInstance();
-        pyModule = py.getModule("main_screen");
-        Log.i(TAG, "Python started — main_screen loaded");
+        // init C runtime — initializes all transpiled screens
+        String result = bridge.nativeInit();
+        bridge.nativeSetActivity(this);
+        Log.i(TAG, result);
 
         startAnimationLoop();
 
-        // ── Render initial tree from Python ──
-        String initialTree = pyModule.callAttr("get_initial_tree").toString();
+        // get initial tree from transpiled HomeScreen
+        String initialTree = bridge.nativeGetInitialTree();
         renderTree(initialTree);
     }
 
-    /**
-     * Called by C runtime (and directly) to update UI.
-     * Always runs on UI thread.
-     */
+    // Called by C runtime via bk_request_render()
     public void renderTree(String treeJson) {
         handler.post(() -> {
             try {
@@ -68,28 +56,18 @@ public class BlinkUIActivity extends Activity {
                 View       view = factory.buildView(tree, 1);
                 rootView.removeAllViews();
                 rootView.addView(view);
+                Log.i(TAG, "Tree rendered");
             } catch (Exception e) {
                 Log.e(TAG, "Render error: " + e.getMessage());
             }
         });
     }
 
-    /**
-     * Called by ComponentFactory when a button is tapped.
-     * Passes event to Python → gets new tree → re-renders.
-     */
+    // Called by ComponentFactory when button tapped
     public void handleEvent(int nodeId, int eventType) {
-        // run off UI thread so Python can do heavy work
-        new Thread(() -> {
-            try {
-                String newTree = pyModule
-                    .callAttr("on_event", nodeId, eventType)
-                    .toString();
-                renderTree(newTree);
-            } catch (Exception e) {
-                Log.e(TAG, "Python event error: " + e.getMessage());
-            }
-        }).start();
+        new Thread(() ->
+            bridge.nativeFireEvent(nodeId, eventType, 0f, 0f)
+        ).start();
     }
 
     private void startAnimationLoop() {

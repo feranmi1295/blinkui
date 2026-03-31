@@ -1,10 +1,11 @@
 """
-BlinkUI Transpiler — JSON Serializer Generator
+BlinkUI Transpiler — JSON Serializer Generator (v2)
 
 Generates C code that serializes the component tree to JSON
 at runtime, using current state values.
 
-This replaces the placeholder in get_tree().
+Supports method chaining: .spacing(), .padding(), .bold(),
+.background(), .center(), .size(), .on_tap()
 """
 
 import ast
@@ -15,17 +16,69 @@ from parser import ScreenDef, StateVar
 from type_inferrer import TypeInferrer
 from codegen import CCodeGenerator, COMPONENT_MAP
 
+# ── Method chain extractor ──
+
+def extract_chain(node):
+    """
+    Unwrap a method chain and return:
+    - The base component Call node
+    - A dict of props from chained methods
+    """
+    props  = {}
+    current = node
+
+    while isinstance(current, ast.Call):
+        if not isinstance(current.func, ast.Attribute):
+            break
+
+        method = current.func.attr
+        args   = current.args
+
+        if method == "on_tap" and args:
+            arg = args[0]
+            if isinstance(arg, ast.Attribute):
+                props["on_tap"] = arg.attr
+        elif method == "spacing" and args:
+            if isinstance(args[0], ast.Constant):
+                props["spacing"] = args[0].value
+        elif method == "padding" and args:
+            if isinstance(args[0], ast.Constant):
+                v = args[0].value
+                props["padding"] = [v, v, v, v]
+        elif method == "background" and args:
+            if isinstance(args[0], ast.Constant):
+                props["background"] = args[0].value
+        elif method == "color" and args:
+            if isinstance(args[0], ast.Constant):
+                props["color"] = args[0].value
+        elif method == "size" and args:
+            if isinstance(args[0], ast.Constant):
+                props["font_size"] = args[0].value
+        elif method == "bold":
+            props["bold"] = True
+        elif method == "center":
+            props["text_align"] = "center"
+        elif method == "italic":
+            props["italic"] = True
+
+        current = current.func.value
+
+    # current is now the base component call
+    return current, props
+
+
+# ── JSON Serializer Generator ──
+
 class JSONSerializerGenerator(CCodeGenerator):
-    """
-    Extends CCodeGenerator with a real get_tree() implementation
-    that emits JSON directly from C state values.
-    """
+
+    def __init__(self):
+        super().__init__()
+        self.tap_map = {}  # handler_name -> node_id
 
     def _gen_get_tree(self, screen: ScreenDef) -> str:
         if not screen.build_tree:
             return self._get_tree_empty(screen)
 
-        # find return statement
         ret_node = None
         for stmt in screen.build_tree.body:
             if isinstance(stmt, ast.Return):
@@ -35,7 +88,6 @@ class JSONSerializerGenerator(CCodeGenerator):
         if not ret_node:
             return self._get_tree_empty(screen)
 
-        # generate JSON builder
         self.node_counter = 100
         json_lines = []
         self._gen_json_node(ret_node, screen, json_lines, depth=0)
@@ -43,7 +95,7 @@ class JSONSerializerGenerator(CCodeGenerator):
         body = "\n    ".join(json_lines)
         return f'''// ── get_tree: serialize component tree to JSON ──
 char* {screen.name}_get_tree({screen.name}* self) {{
-    static char buf[8192];
+    static char buf[16384];
     int pos = 0;
     {body}
     buf[pos] = '\\0';
@@ -61,67 +113,104 @@ char* {screen.name}_get_tree({screen.name}* self) {{
         if not isinstance(node, ast.Call):
             return
 
-        func_name = self._get_func_name(node)
-        inner     = self._unwrap_component_call(node)
+        # extract base component and chained props
+        base, chain_props = extract_chain(node)
 
+        if not isinstance(base, ast.Call):
+            return
+
+        func_name = self._get_func_name(base)
         if func_name not in COMPONENT_MAP:
             return
 
         self.node_counter += 1
         node_id = self.node_counter
 
-        # get props
-        on_tap = self._get_on_tap(node)
+        # track on_tap handler -> node_id
+        on_tap = chain_props.get("on_tap")
+        if on_tap:
+            self.tap_map[on_tap] = node_id
 
-        # get label/content
-        content_c = self._gen_content_c(inner, screen, lines, node_id)
+        # get label/content from base args
+        content_c = self._gen_content_c(base, screen, lines, node_id)
 
-        # get children
-        children = self._get_children(node, screen, depth)
+        # get children from base args
+        children = self._get_children_from_base(base, screen, depth)
 
-        # emit JSON open
-        self._emit(lines, f'pos += snprintf(buf+pos, 8192-pos, "{{");')
+        # merge default styling with chain props
+        styling = self._build_styling(func_name, chain_props, node_id)
 
-        # type
-        self._emit(lines, f'pos += snprintf(buf+pos, 8192-pos, "\\"type\\":\\"{func_name}\\"");')
+        # emit JSON
+        self._emit(lines, 'pos += snprintf(buf+pos, 16384-pos, "{");')
+        self._emit(lines, f'pos += snprintf(buf+pos, 16384-pos, "\\"type\\":\\"{func_name}\\"");')
+        self._emit(lines, f'pos += snprintf(buf+pos, 16384-pos, ",\\"node_id\\":{node_id}");')
 
-        # node_id
-        self._emit(lines, f'pos += snprintf(buf+pos, 8192-pos, ",\\"node_id\\":{node_id}");')
-
-        # content/label
-        if func_name in ("Text", "Heading", "Label"):
-            self._emit(lines, f'pos += snprintf(buf+pos, 8192-pos, ",\\"content\\":\\"%s\\"", {content_c});')
+        # content
+        if func_name in ("Text", "Heading", "Label", "NavigationBar"):
+            self._emit(lines,
+                f'pos += snprintf(buf+pos, 16384-pos, ",\\"content\\":\\"%s\\"", {content_c});'
+            )
         elif func_name == "Button":
-            self._emit(lines, f'pos += snprintf(buf+pos, 8192-pos, ",\\"label\\":\\"%s\\"", {content_c});')
+            self._emit(lines,
+                f'pos += snprintf(buf+pos, 16384-pos, ",\\"label\\":\\"%s\\"", {content_c});'
+            )
 
-        # default styling per component
-        styling = self._default_styling(func_name)
-        if styling:
-            self._emit(lines, f'pos += snprintf(buf+pos, 8192-pos, "{styling}");')
+        # styling
+        for key, val in styling.items():
+            if isinstance(val, str):
+                self._emit(lines,
+                    f'pos += snprintf(buf+pos, 16384-pos, ",\\"{key}\\":\\"{val}\\"");'
+                )
+            elif isinstance(val, bool):
+                bval = "true" if val else "false"
+                self._emit(lines,
+                    f'pos += snprintf(buf+pos, 16384-pos, ",\\"{key}\\":{bval}");'
+                )
+            elif isinstance(val, list):
+                arr = ",".join(str(v) for v in val)
+                self._emit(lines,
+                    f'pos += snprintf(buf+pos, 16384-pos, ",\\"{key}\\":[{arr}]");'
+                )
+            else:
+                self._emit(lines,
+                    f'pos += snprintf(buf+pos, 16384-pos, ",\\"{key}\\":{val}");'
+                )
 
         # children
         if children:
-            self._emit(lines, f'pos += snprintf(buf+pos, 8192-pos, ",\\"children\\":[");')
+            self._emit(lines, 'pos += snprintf(buf+pos, 16384-pos, ",\\"children\\":[");')
             for i, child in enumerate(children):
                 self._gen_json_node(child, screen, lines, depth+1)
                 if i < len(children) - 1:
-                    self._emit(lines, f'pos += snprintf(buf+pos, 8192-pos, ",");')
-            self._emit(lines, f'pos += snprintf(buf+pos, 8192-pos, "]");')
+                    self._emit(lines, 'pos += snprintf(buf+pos, 16384-pos, ",");')
+            self._emit(lines, 'pos += snprintf(buf+pos, 16384-pos, "]");')
         else:
-            self._emit(lines, f'pos += snprintf(buf+pos, 8192-pos, ",\\"children\\":[]");')
+            self._emit(lines, 'pos += snprintf(buf+pos, 16384-pos, ",\\"children\\":[]");')
 
-        # close
-        self._emit(lines, f'pos += snprintf(buf+pos, 8192-pos, "}}");')
+        self._emit(lines, 'pos += snprintf(buf+pos, 16384-pos, "}");')
 
-    def _gen_content_c(self, inner, screen, lines, node_id) -> str:
-        if not inner.args:
+    def _get_children_from_base(self, base, screen, depth):
+        children = []
+        for arg in base.args:
+            if isinstance(arg, ast.Call):
+                b, _ = extract_chain(arg)
+                if isinstance(b, ast.Call):
+                    fname = self._get_func_name(b)
+                    if fname in COMPONENT_MAP:
+                        children.append(arg)
+        for kw in base.keywords:
+            if kw.arg == "children" and isinstance(kw.value, ast.List):
+                for elt in kw.value.elts:
+                    if isinstance(elt, ast.Call):
+                        children.append(elt)
+        return children
+
+    def _gen_content_c(self, base, screen, lines, node_id) -> str:
+        if not base.args:
             return '""'
-
-        arg = inner.args[0]
-
+        arg = base.args[0]
         if isinstance(arg, ast.Constant):
             return f'"{arg.value}"'
-
         if isinstance(arg, ast.JoinedStr):
             temp = f"_json_str_{node_id}"
             fmt, vars_ = self._parse_fstring(arg, screen)
@@ -137,45 +226,127 @@ char* {screen.name}_get_tree({screen.name}* self) {{
                     f'snprintf({temp}, 512, "{fmt}");'
                 )
             return temp
-
+        # keyword arg: title="..."
+        for kw in base.keywords:
+            if kw.arg == "title" and isinstance(kw.value, ast.Constant):
+                return f'"{kw.value.value}"'
         return '"..."'
 
-    def _get_on_tap(self, node) -> str:
-        current = node
-        while isinstance(current, ast.Call):
-            if isinstance(current.func, ast.Attribute):
-                if current.func.attr == "on_tap" and current.args:
-                    arg = current.args[0]
-                    if isinstance(arg, ast.Attribute):
-                        return arg.attr
-                current = current.func.value
-            else:
-                break
-        return ""
-
-    def _default_styling(self, func_name) -> str:
-        styles = {
-            "VStack":  ',\\"padding\\":[24,24,24,24],\\"background\\":\\"#F2F2F7\\",'
-                       '\\"corner_radius\\":0,\\"opacity\\":1.0,\\"visible\\":true,'
-                       '\\"margin\\":[0,0,0,0]',
-            "HStack":  ',\\"padding\\":[0,0,0,0],\\"background\\":\\"\\","'
-                       '\\"corner_radius\\":0,\\"opacity\\":1.0,\\"visible\\":true,'
-                       '\\"margin\\":[0,0,0,0]',
-            "Text":    ',\\"font_size\\":16,\\"bold\\":false,\\"color\\":\\"#1C1C1E\\",'
-                       '\\"padding\\":[0,0,8,0],\\"margin\\":[0,0,0,0],'
-                       '\\"opacity\\":1.0,\\"visible\\":true',
-            "Heading": ',\\"font_size\\":28,\\"bold\\":true,\\"color\\":\\"#1C1C1E\\",'
-                       '\\"padding\\":[0,0,12,0],\\"margin\\":[0,0,0,0],'
-                       '\\"opacity\\":1.0,\\"visible\\":true',
-            "Button":  ',\\"background\\":\\"#007AFF\\",\\"color\\":\\"#FFFFFF\\",'
-                       '\\"corner_radius\\":14,\\"font_size\\":18,\\"bold\\":true,'
-                       '\\"padding\\":[16,20,16,20],\\"margin\\":[8,0,0,0],'
-                       '\\"opacity\\":1.0,\\"visible\\":true',
-            "Card":    ',\\"background\\":\\"#FFFFFF\\",\\"corner_radius\\":12,'
-                       '\\"opacity\\":1.0,\\"visible\\":true,'
-                       '\\"padding\\":[16,16,16,16],\\"margin\\":[8,0,0,0]',
+    def _build_styling(self, func_name, chain_props, node_id) -> dict:
+        # defaults per component
+        defaults = {
+            "VStack": {
+                "padding":        [16, 16, 16, 16],
+                "background":     "#0F0F0F",
+                "corner_radius":  0,
+                "opacity":        1.0,
+                "visible":        True,
+                "margin":         [0, 0, 0, 0],
+            },
+            "HStack": {
+                "padding":        [0, 0, 0, 0],
+                "background":     "#0F0F0F",
+                "corner_radius":  0,
+                "opacity":        1.0,
+                "visible":        True,
+                "margin":         [0, 0, 0, 0],
+            },
+            "Text": {
+                "font_size":  16,
+                "bold":       False,
+                "color":      "#FFFFFF",
+                "padding":    [0, 0, 8, 0],
+                "margin":     [0, 0, 0, 0],
+                "opacity":    1.0,
+                "visible":    True,
+            },
+            "Heading": {
+                "font_size":  28,
+                "bold":       True,
+                "color":      "#FFFFFF",
+                "padding":    [0, 0, 12, 0],
+                "margin":     [0, 0, 0, 0],
+                "opacity":    1.0,
+                "visible":    True,
+            },
+            "Label": {
+                "font_size":  14,
+                "bold":       False,
+                "color":      "#999999",
+                "padding":    [0, 0, 4, 0],
+                "margin":     [0, 0, 0, 0],
+                "opacity":    1.0,
+                "visible":    True,
+            },
+            "Button": {
+                "background":    "#00FF88",
+                "color":         "#0F0F0F",
+                "corner_radius": 6,
+                "font_size":     18,
+                "bold":          True,
+                "padding":       [16, 20, 16, 20],
+                "margin":        [8, 0, 0, 0],
+                "opacity":       1.0,
+                "visible":       True,
+            },
+            "Card": {
+                "background":    "#1A1A1A",
+                "corner_radius": 12,
+                "opacity":       1.0,
+                "visible":       True,
+                "padding":       [16, 16, 16, 16],
+                "margin":        [8, 0, 0, 0],
+            },
+            "NavigationBar": {
+                "font_size":  20,
+                "bold":       True,
+                "color":      "#FFFFFF",
+                "background": "#0F0F0F",
+                "padding":    [12, 16, 12, 16],
+                "margin":     [0, 0, 0, 0],
+                "opacity":    1.0,
+                "visible":    True,
+            },
         }
-        return styles.get(func_name, "")
+
+        styling = defaults.get(func_name, {
+            "opacity": 1.0,
+            "visible": True,
+            "padding": [0, 0, 0, 0],
+            "margin":  [0, 0, 0, 0],
+        }).copy()
+
+        # override with chain props
+        for k, v in chain_props.items():
+            if k == "font_size":
+                styling["font_size"] = v
+            elif k == "bold":
+                styling["bold"] = v
+            elif k == "background":
+                styling["background"] = v
+            elif k == "color":
+                styling["color"] = v
+            elif k == "padding":
+                styling["padding"] = v
+            elif k == "spacing":
+                styling["spacing"] = v
+            elif k == "text_align":
+                styling["text_align"] = v
+
+        return styling
+
+    def _gen_on_event(self, screen) -> str:
+        cases = []
+        for handler_name, nid in self.tap_map.items():
+            case = "    if (node_id == " + str(nid) + " && event_type == 0) "
+            case += screen.name + "_" + handler_name + "(self);"
+            cases.append(case)
+        cases_str = "\n".join(cases) if cases else "    // no handlers"
+        out  = "// ── on_event dispatcher ──\n"
+        out += "void " + screen.name + "_on_event(" + screen.name + "* self, int node_id, int event_type) {\n"
+        out += cases_str + "\n"
+        out += "}\n"
+        return out
 
     def _emit(self, lines, line):
         lines.append(line)
@@ -188,19 +359,27 @@ if __name__ == "__main__":
 
     test_source = '''
 from blinkui import Screen, state
-from blinkui.components import VStack, Text, Button, Heading
+from blinkui.components import VStack, HStack, Text, Heading, Button, Card, Label, NavigationBar
 
 class HomeScreen(Screen):
     count = state(0)
-    name  = state("BlinkUI")
 
     def build(self):
         return VStack(
-            Heading(f"Hello from {self.name}"),
-            Text(f"Count: {self.count}"),
-            Button("Tap Me").on_tap(self.increment),
-            Button("Reset").on_tap(self.reset),
-        )
+            NavigationBar(title="Home"),
+            Card(
+                VStack(
+                    Heading("Welcome to BlinkUI"),
+                    Label("Build mobile apps in pure Python"),
+                ).spacing(8)
+            ),
+            Text(f"Count: {self.count}").size(32).bold().center(),
+            HStack(
+                Button("Increment").on_tap(self.increment),
+                Button("Reset").background("#FF3B30").on_tap(self.reset),
+            ).spacing(12),
+            Button("Go to Detail").on_tap(self.go_detail),
+        ).spacing(16).padding(16)
 
     def increment(self):
         self.count += 1
