@@ -33,6 +33,11 @@ COMPONENT_MAP = {
     "Slider":      "bk_slider",
     "Spacer":      "bk_spacer",
     "Divider":     "bk_divider",
+    "TextField":   "bk_textfield",
+    "Toggle":      "bk_toggle",
+    "Slider":      "bk_slider",
+    "List":        "bk_scroll",
+    "ListView":    "bk_scroll",
 }
 
 # ── Code Generator ──

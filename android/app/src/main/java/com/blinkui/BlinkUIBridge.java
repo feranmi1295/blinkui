@@ -13,6 +13,7 @@ public class BlinkUIBridge {
     public native String nativeGetVersion();
     public native String nativeGetInitialTree();
     public native void   nativeSetActivity(Object activity);
+    public native void   nativeTextChange(int nodeId, String text);
 
     private static BlinkUIBridge instance;
     public static BlinkUIBridge getInstance() {

@@ -67,6 +67,7 @@ void bk_request_render(void* screen) {
     }
     if (tree) {
         LOGI("Re-rendering after state change");
+        // call renderTree for crossfade animation
         call_render(tree);
     }
 }
@@ -74,7 +75,32 @@ void bk_request_render(void* screen) {
 // bk_navigate — called by go_detail, go_back etc
 void bk_navigate(int screen_index) {
     g_current_screen = screen_index;
-    bk_request_render(NULL);
+
+    // get new tree
+    char* tree = NULL;
+    if (screen_index == 0 && g_home) {
+        tree = HomeScreen_get_tree(g_home);
+    } else if (screen_index == 1 && g_detail) {
+        tree = DetailScreen_get_tree(g_detail);
+    }
+    if (!tree) return;
+
+    // call navigateTo on activity for animated transition
+    if (!g_jvm || !g_activity) return;
+    JNIEnv* env;
+    int attached = 0;
+    if ((*g_jvm)->GetEnv(g_jvm, (void**)&env, JNI_VERSION_1_6) == JNI_EDETACHED) {
+        (*g_jvm)->AttachCurrentThread(g_jvm, &env, NULL);
+        attached = 1;
+    }
+    jclass    cls    = (*env)->GetObjectClass(env, g_activity);
+    jmethodID method = (*env)->GetMethodID(env, cls, "navigateTo", "(I)V");
+    if (method) {
+        (*env)->CallVoidMethod(env, g_activity, method, (jint)screen_index);
+    }
+    // store tree for navigateTo to use
+    call_render(tree);
+    if (attached) (*g_jvm)->DetachCurrentThread(g_jvm);
 }
 
 // ── JNI methods ──
@@ -131,6 +157,17 @@ JNIEXPORT void JNICALL
 Java_com_blinkui_BlinkUIBridge_nativeTick(
     JNIEnv* env, jobject thiz, jlong delta_ms
 ) {}
+
+// Text field change — store value in screen state
+// For now just log it; full binding requires state name map
+JNIEXPORT void JNICALL
+Java_com_blinkui_BlinkUIBridge_nativeTextChange(
+    JNIEnv* env, jobject thiz, jint node_id, jstring text
+) {
+    const char* str = (*env)->GetStringUTFChars(env, text, 0);
+    LOGI("TextField node=%d value=%s", node_id, str);
+    (*env)->ReleaseStringUTFChars(env, text, str);
+}
 
 JNIEXPORT jstring JNICALL
 Java_com_blinkui_BlinkUIBridge_nativeGetVersion(

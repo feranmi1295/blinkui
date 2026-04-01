@@ -40,6 +40,12 @@ public class ComponentFactory {
                 case "Text":         return buildText(node, id, 16, false);
                 case "Button":       return buildButton(node, id);
                 case "NavigationBar":return buildNavBar(node, id);
+                case "TextField":    return buildTextField(node, id);
+                case "Divider":      return buildDivider(node, id);
+                case "Spacer":       return buildSpacer(node, id);
+                case "List":
+                case "ListView":     return buildScrollView(node, id);
+                case "ListItem":     return buildListItem(node, id);
                 default:             return new View(context);
             }
         } catch (Exception e) {
@@ -84,6 +90,19 @@ public class ComponentFactory {
         }
 
         applyPadding(layout, node);
+
+        boolean scrollable = node.optBoolean("scrollable", false);
+        if (scrollable) {
+            ScrollView sv = new ScrollView(context);
+            sv.setFillViewport(true);
+            sv.setBackgroundColor(parseColor(node.optString("background", "#0F0F0F")));
+            sv.addView(layout);
+            sv.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            ));
+            return sv;
+        }
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -134,24 +153,39 @@ public class ComponentFactory {
     // ── ScrollView ──
     private View buildScrollView(JSONObject node, int nodeId) throws Exception {
         ScrollView sv = new ScrollView(context);
+        sv.setBackgroundColor(parseColor(node.optString("background", "#0F0F0F")));
+        sv.setFillViewport(true);
+
         LinearLayout inner = new LinearLayout(context);
         inner.setOrientation(LinearLayout.VERTICAL);
+        inner.setBackgroundColor(parseColor(node.optString("background", "#0F0F0F")));
+
+        int spacing = dpToPx(node.optInt("spacing", 0));
 
         JSONArray children = node.optJSONArray("children");
         if (children != null) {
             for (int i = 0; i < children.length(); i++) {
                 JSONObject child = children.getJSONObject(i);
                 int childId = child.optInt("node_id", nodeId * 100 + i);
-                inner.addView(buildView(child, childId));
+                View childView = buildView(child, childId);
+                LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                );
+                if (i > 0) p.topMargin = spacing;
+                childView.setLayoutParams(p);
+                inner.addView(childView);
             }
         }
 
+        applyPadding(inner, node);
         sv.addView(inner);
-        applyPadding(sv, node);
-        sv.setLayoutParams(new LinearLayout.LayoutParams(
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+        );
+        sv.setLayoutParams(lp);
         return sv;
     }
 
@@ -194,9 +228,15 @@ public class ComponentFactory {
         setRoundedBackground(btn, bg, radius);
         btn.setTextColor(parseColor(node.optString("color", "#FFFFFF")));
 
-        btn.setOnClickListener(v ->
-            activity.handleEvent(nodeId, BlinkUIBridge.EVENT_TAP)
-        );
+        btn.setOnClickListener(v -> {
+            // press animation
+            BlinkUIActivity.animateButtonPress(v);
+            // fire event after short delay so animation is visible
+            v.postDelayed(() ->
+                activity.handleEvent(nodeId, BlinkUIBridge.EVENT_TAP),
+                80
+            );
+        });
 
         applyPadding(btn, node);
 
@@ -228,6 +268,123 @@ public class ComponentFactory {
         );
         tv.setLayoutParams(lp);
         return tv;
+    }
+
+    // ── TextField ──
+    private View buildTextField(JSONObject node, final int nodeId) throws Exception {
+        android.widget.EditText et = new android.widget.EditText(context);
+        et.setHint(node.optString("placeholder", ""));
+        et.setHintTextColor(parseColor("#555555"));
+        et.setTextColor(parseColor("#FFFFFF"));
+        et.setTextSize(node.optInt("font_size", 16));
+        et.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+
+        // dark surface background with border
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(parseColor("#1A1A1A"));
+        bg.setCornerRadius(dpToPx(node.optInt("corner_radius", 8)));
+        bg.setStroke(dpToPx(1), parseColor("#2A2A2A"));
+        et.setBackground(bg);
+
+        et.setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14));
+
+        // send text change events
+        et.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                activity.handleTextChange(nodeId, s.toString());
+            }
+            public void afterTextChanged(android.text.Editable s) {}
+        });
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        lp.topMargin = dpToPx(8);
+        et.setLayoutParams(lp);
+        return et;
+    }
+
+    // ── Divider ──
+    private View buildDivider(JSONObject node, int nodeId) {
+        View divider = new View(context);
+        divider.setBackgroundColor(parseColor("#2A2A2A"));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(1)
+        );
+        lp.topMargin    = dpToPx(8);
+        lp.bottomMargin = dpToPx(8);
+        divider.setLayoutParams(lp);
+        return divider;
+    }
+
+    // ── ListItem ──
+    private View buildListItem(JSONObject node, int nodeId) throws Exception {
+        LinearLayout item = new LinearLayout(context);
+        item.setOrientation(LinearLayout.HORIZONTAL);
+        item.setGravity(android.view.Gravity.CENTER_VERTICAL);
+
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(parseColor("#1A1A1A"));
+        bg.setCornerRadius(dpToPx(8));
+        item.setBackground(bg);
+        item.setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14));
+
+        // accent left bar
+        View accent = new View(context);
+        accent.setBackgroundColor(parseColor("#00FF88"));
+        LinearLayout.LayoutParams accentLp = new LinearLayout.LayoutParams(dpToPx(3),
+            ViewGroup.LayoutParams.MATCH_PARENT);
+        accentLp.rightMargin = dpToPx(12);
+        accent.setLayoutParams(accentLp);
+        item.addView(accent);
+
+        // content
+        JSONArray children = node.optJSONArray("children");
+        if (children != null) {
+            for (int i = 0; i < children.length(); i++) {
+                JSONObject child = children.getJSONObject(i);
+                int childId = child.optInt("node_id", nodeId * 100 + i);
+                item.addView(buildView(child, childId));
+            }
+        } else {
+            // fallback: show content as text
+            String text = node.optString("content", "");
+            if (!text.isEmpty()) {
+                TextView tv = new TextView(context);
+                tv.setText(text);
+                tv.setTextColor(parseColor("#FFFFFF"));
+                tv.setTextSize(16);
+                item.addView(tv);
+            }
+        }
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        lp.bottomMargin = dpToPx(8);
+        item.setLayoutParams(lp);
+
+        // tap support
+        int nid = nodeId;
+        item.setOnClickListener(v -> {
+            BlinkUIActivity.animateButtonPress(v);
+            v.postDelayed(() -> activity.handleEvent(nid, BlinkUIBridge.EVENT_TAP), 80);
+        });
+
+        return item;
+    }
+
+    // ── Spacer ──
+    private View buildSpacer(JSONObject node, int nodeId) {
+        View spacer = new View(context);
+        int height = node.optInt("height", 16);
+        spacer.setLayoutParams(new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(height)
+        ));
+        return spacer;
     }
 
     // ── Helpers ──
