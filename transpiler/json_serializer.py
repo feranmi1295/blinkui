@@ -110,6 +110,11 @@ char* {screen.name}_get_tree({screen.name}* self) {{
 '''
 
     def _gen_json_node(self, node, screen, lines, depth):
+        # handle ternary: ComponentA() if condition else ComponentB()
+        if isinstance(node, ast.IfExp):
+            self._gen_conditional_node(node, screen, lines, depth)
+            return
+
         if not isinstance(node, ast.Call):
             return
 
@@ -192,6 +197,10 @@ char* {screen.name}_get_tree({screen.name}* self) {{
     def _get_children_from_base(self, base, screen, depth):
         children = []
         for arg in base.args:
+            # ternary conditional: ComponentA() if x else ComponentB()
+            if isinstance(arg, ast.IfExp):
+                children.append(arg)
+                continue
             if isinstance(arg, ast.Call):
                 b, _ = extract_chain(arg)
                 if isinstance(b, ast.Call):
@@ -202,6 +211,8 @@ char* {screen.name}_get_tree({screen.name}* self) {{
             if kw.arg == "children" and isinstance(kw.value, ast.List):
                 for elt in kw.value.elts:
                     if isinstance(elt, ast.Call):
+                        children.append(elt)
+                    elif isinstance(elt, ast.IfExp):
                         children.append(elt)
         return children
 
@@ -371,6 +382,58 @@ char* {screen.name}_get_tree({screen.name}* self) {{
         out += cases_str + "\n"
         out += "}\n"
         return out
+
+    def _gen_conditional_node(self, node, screen, lines, depth):
+        """Handle: ComponentA() if self.loading else ComponentB()"""
+        test  = self._gen_condition(node.test, screen)
+        lines.append(f"if ({test}) {{")
+        self._gen_json_node(node.body, screen, lines, depth)
+        lines.append("} else {")
+        self._gen_json_node(node.orelse, screen, lines, depth)
+        lines.append("}")
+
+    def _gen_condition(self, node, screen) -> str:
+        """Generate C condition from Python AST."""
+        import ast as _ast
+
+        if isinstance(node, _ast.Attribute):
+            if (isinstance(node.value, _ast.Name) and
+                node.value.id == "self"):
+                sv = self._find_state_var(screen, node.attr)
+                if sv and sv.inferred_type == "int":
+                    return f"self->{node.attr}"
+                return f"self->{node.attr}"
+
+        if isinstance(node, _ast.Compare):
+            left = self._gen_cond_expr(node.left, screen)
+            if node.ops and node.comparators:
+                op    = self._gen_cmpop(node.ops[0])
+                right = self._gen_cond_expr(node.comparators[0], screen)
+                return f"({left} {op} {right})"
+
+        if isinstance(node, _ast.UnaryOp):
+            if isinstance(node.op, _ast.Not):
+                val = self._gen_condition(node.operand, screen)
+                return f"!({val})"
+
+        if isinstance(node, _ast.BoolOp):
+            parts = [self._gen_condition(v, screen) for v in node.values]
+            op = " && " if isinstance(node.op, _ast.And) else " || "
+            return f"({op.join(parts)})"
+
+        return "1"
+
+    def _gen_cond_expr(self, node, screen) -> str:
+        import ast as _ast
+        if isinstance(node, _ast.Constant):
+            if isinstance(node.value, str):
+                return f'"{node.value}"'
+            return str(node.value)
+        if isinstance(node, _ast.Attribute):
+            if (isinstance(node.value, _ast.Name) and
+                node.value.id == "self"):
+                return f"self->{node.attr}"
+        return "0"
 
     def _emit(self, lines, line):
         lines.append(line)

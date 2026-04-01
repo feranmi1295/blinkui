@@ -30,9 +30,9 @@ public class ComponentFactory {
         try {
             int id = node.optInt("node_id", nodeId);
             switch (node.getString("type")) {
-                case "VStack":       return buildStack(node, id, LinearLayout.VERTICAL);
-                case "HStack":       return buildStack(node, id, LinearLayout.HORIZONTAL);
-                case "ZStack":       return buildStack(node, id, LinearLayout.VERTICAL);
+                case "VStack":       return buildStack(node, id, LinearLayout.VERTICAL, nodeId == 1 ? 0 : 1);
+                case "HStack":       return buildStack(node, id, LinearLayout.HORIZONTAL, 1);
+                case "ZStack":       return buildStack(node, id, LinearLayout.VERTICAL, 1);
                 case "Card":         return buildCard(node, id);
                 case "ScrollView":   return buildScrollView(node, id);
                 case "Heading":      return buildText(node, id, 28, true);
@@ -55,11 +55,15 @@ public class ComponentFactory {
 
     // ── VStack / HStack ──
     private View buildStack(JSONObject node, int nodeId, int orientation) throws Exception {
+        return buildStack(node, nodeId, orientation, 0);
+    }
+    private View buildStack(JSONObject node, int nodeId, int orientation, int depth) throws Exception {
         LinearLayout layout = new LinearLayout(context);
         layout.setOrientation(orientation);
 
-        // full screen height for root VStack
-        boolean isRoot = node.optInt("node_id", 0) <= 102;
+        // root VStack is the first child added to rootView
+        // detect by checking if parent is the activity root
+        boolean isRoot = (orientation == LinearLayout.VERTICAL && depth == 0);
 
         applyBackground(layout, node);
 
@@ -91,10 +95,15 @@ public class ComponentFactory {
 
         applyPadding(layout, node);
 
-        boolean scrollable = node.optBoolean("scrollable", false);
-        if (scrollable) {
+        // always wrap root VStack in ScrollView for overflow
+        if (isRoot || node.optBoolean("scrollable", false)) {
+            layout.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
+
             ScrollView sv = new ScrollView(context);
-            sv.setFillViewport(true);
+            sv.setFillViewport(false);
             sv.setBackgroundColor(parseColor(node.optString("background", "#0F0F0F")));
             sv.addView(layout);
             sv.setLayoutParams(new LinearLayout.LayoutParams(
@@ -106,7 +115,7 @@ public class ComponentFactory {
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            isRoot ? ViewGroup.LayoutParams.MATCH_PARENT : ViewGroup.LayoutParams.WRAP_CONTENT
+            ViewGroup.LayoutParams.WRAP_CONTENT
         );
         layout.setLayoutParams(lp);
         return layout;

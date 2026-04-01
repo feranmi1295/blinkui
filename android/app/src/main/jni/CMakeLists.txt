@@ -8,6 +8,7 @@ add_library(
     blinkui_bridge
     SHARED
     app_bridge.c
+    ${GENERATED_DIR}/global_store.c
     ${GENERATED_DIR}/HomeScreen.c
     ${GENERATED_DIR}/DetailScreen.c
     ${RUNTIME_DIR}/core/components.c
@@ -19,6 +20,7 @@ add_library(
 target_include_directories(blinkui_bridge PRIVATE
     ${RUNTIME_DIR}/core
     ${RUNTIME_DIR}/animation
+    ${GENERATED_DIR}
 )
 
 target_compile_definitions(blinkui_bridge PRIVATE

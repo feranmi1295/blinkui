@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from parser import BlinkUIParser
 from type_inferrer import TypeInferrer
 from json_serializer import JSONSerializerGenerator
+from store_analyzer import find_stores, generate_global_store_h, generate_global_store_c
 
 def transpile_screen(py_file: str, out_dir: str) -> str:
     """Transpile a single Python screen to C."""
@@ -65,6 +66,14 @@ def build_android(project_dir: str):
     out_dir = os.path.join(project_dir, ".blink", "generated", "c")
     os.makedirs(out_dir, exist_ok=True)
 
+    # 3 — analyze and generate global store
+    print("\n🗄️  Analyzing global stores")
+    stores = find_stores(project_dir)
+    if stores:
+        print(f"   Found {len(stores)} store(s): {[s.name for s in stores]}")
+    generate_global_store_h(stores, out_dir)
+    generate_global_store_c(stores, out_dir)
+
     # 3 — transpile each screen
     print("\n🔄 Transpiling Python → C")
     c_files = []
@@ -110,14 +119,18 @@ def compile_with_ndk(c_files, out_dir, ndk, project_dir):
         os.path.join(runtime, "animation/animation.c"),
     ]
 
+    global_store_c = os.path.join(out_dir, "global_store.c")
+    extra = [global_store_c] if os.path.exists(global_store_c) else []
+
     cmd = [
         clang,
         "-shared", "-fPIC",
         "-DANDROID", "-DNO_PYTHON",
+        f"-I{out_dir}",
         "-o", output,
         f"-I{runtime}/core",
         f"-I{runtime}/animation",
-    ] + c_files + runtime_sources + ["-llog", "-lm"]
+    ] + c_files + extra + runtime_sources + ["-llog", "-lm"]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode == 0:
