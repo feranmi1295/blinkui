@@ -160,6 +160,31 @@ Java_com_blinkui_BlinkUIBridge_nativeTick(
 
 // Text field change — store value in screen state
 // For now just log it; full binding requires state name map
+// Tab navigation — returns NULL if no tabs configured
+JNIEXPORT jstring JNICALL
+Java_com_blinkui_BlinkUIBridge_nativeGetTabConfig(
+    JNIEnv* env, jobject thiz
+) {
+    // return empty string = no tab navigation (stack nav)
+    // apps with tabs override this by providing tab config
+    return (*env)->NewStringUTF(env, "");
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_blinkui_BlinkUIBridge_nativeGetTabTree(
+    JNIEnv* env, jobject thiz, jint tab_index
+) {
+    // return tree for given tab index
+    if (tab_index == 0 && g_home) {
+        g_current_screen = 0;
+        return (*env)->NewStringUTF(env, HomeScreen_get_tree(g_home));
+    } else if (tab_index == 1 && g_detail) {
+        g_current_screen = 1;
+        return (*env)->NewStringUTF(env, DetailScreen_get_tree(g_detail));
+    }
+    return (*env)->NewStringUTF(env, "{}");
+}
+
 JNIEXPORT void JNICALL
 Java_com_blinkui_BlinkUIBridge_nativeTextChange(
     JNIEnv* env, jobject thiz, jint node_id, jstring text

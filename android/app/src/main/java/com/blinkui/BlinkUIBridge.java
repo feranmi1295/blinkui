@@ -14,6 +14,8 @@ public class BlinkUIBridge {
     public native String nativeGetInitialTree();
     public native void   nativeSetActivity(Object activity);
     public native void   nativeTextChange(int nodeId, String text);
+    public native String nativeGetTabConfig();
+    public native String nativeGetTabTree(int tabIndex);
 
     private static BlinkUIBridge instance;
     public static BlinkUIBridge getInstance() {
