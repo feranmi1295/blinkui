@@ -185,6 +185,85 @@ Java_com_blinkui_BlinkUIBridge_nativeGetTabTree(
     return (*env)->NewStringUTF(env, "{}");
 }
 
+// ── Toast notification ──
+JNIEXPORT void JNICALL
+Java_com_blinkui_BlinkUIBridge_nativeShowToast(
+    JNIEnv* env, jobject thiz,
+    jstring message, jstring type, jint duration
+) {
+    if (!g_activity) return;
+    JNIEnv* e = env;
+    jclass    cls    = (*e)->GetObjectClass(e, g_activity);
+    jmethodID method = (*e)->GetMethodID(e, cls,
+        "showToast", "(Ljava/lang/String;Ljava/lang/String;I)V");
+    if (method) {
+        (*e)->CallVoidMethod(e, g_activity, method, message, type, duration);
+    }
+}
+
+// public C API for screens
+void bk_toast(const char* message, const char* type) {
+    if (!g_jvm || !g_activity) return;
+    JNIEnv* env;
+    int attached = 0;
+    if ((*g_jvm)->GetEnv(g_jvm, (void**)&env, JNI_VERSION_1_6) == JNI_EDETACHED) {
+        (*g_jvm)->AttachCurrentThread(g_jvm, &env, NULL);
+        attached = 1;
+    }
+    jstring jmsg  = (*env)->NewStringUTF(env, message);
+    jstring jtype = (*env)->NewStringUTF(env, type);
+    jclass    cls    = (*env)->GetObjectClass(env, g_activity);
+    jmethodID method = (*env)->GetMethodID(env, cls,
+        "showToast", "(Ljava/lang/String;Ljava/lang/String;I)V");
+    if (method) {
+        (*env)->CallVoidMethod(env, g_activity, method, jmsg, jtype, (jint)2500);
+    }
+    (*env)->DeleteLocalRef(env, jmsg);
+    (*env)->DeleteLocalRef(env, jtype);
+    if (attached) (*g_jvm)->DetachCurrentThread(g_jvm);
+}
+
+// ── HTTP response from Java ──
+JNIEXPORT void JNICALL
+Java_com_blinkui_BlinkUIBridge_nativeHttpResponse(
+    JNIEnv* env, jobject thiz,
+    jint request_id, jint status, jstring body
+) {
+    const char* b = (*env)->GetStringUTFChars(env, body, 0);
+    LOGI("HTTP response: id=%d status=%d body=%.80s", request_id, status, b);
+
+    // TODO: route to screen on_response handler
+    // For now: trigger re-render
+    bk_request_render(NULL);
+
+    (*env)->ReleaseStringUTFChars(env, body, b);
+}
+
+// ── HTTP GET from C ──
+JNIEXPORT void JNICALL
+Java_com_blinkui_BlinkUIBridge_nativeHttpGet(
+    JNIEnv* env, jobject thiz,
+    jstring url, jint request_id
+) {
+    const char* u = (*env)->GetStringUTFChars(env, url, 0);
+    LOGI("HTTP GET: %s [id=%d]", u, request_id);
+    (*env)->ReleaseStringUTFChars(env, url, u);
+
+    // call Java network layer
+    jclass    cls    = (*env)->GetObjectClass(env, g_activity);
+    jmethodID method = (*env)->GetMethodID(env, cls,
+        "getNetwork", "()Lcom/blinkui/BlinkUINetwork;");
+    if (method) {
+        jobject net = (*env)->CallObjectMethod(env, g_activity, method);
+        jclass  nc  = (*env)->GetObjectClass(env, net);
+        jmethodID get = (*env)->GetMethodID(env, nc,
+            "get", "(Ljava/lang/String;I)V");
+        if (get) {
+            (*env)->CallVoidMethod(env, net, get, url, request_id);
+        }
+    }
+}
+
 JNIEXPORT void JNICALL
 Java_com_blinkui_BlinkUIBridge_nativeTextChange(
     JNIEnv* env, jobject thiz, jint node_id, jstring text

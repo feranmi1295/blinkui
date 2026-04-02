@@ -391,7 +391,7 @@ void {screen.name}_{handler.name}({screen.name}* self) {{
 '''
 
     def _gen_stmt(self, stmt, screen) -> str:
-        # self.navigate("screen") → bk_navigate
+        # self.navigate/fetch/post → C calls
         if isinstance(stmt, ast.Expr):
             val = stmt.value
             if isinstance(val, ast.Call):
@@ -399,9 +399,21 @@ void {screen.name}_{handler.name}({screen.name}* self) {{
                     if val.func.attr == "navigate" and val.args:
                         if isinstance(val.args[0], ast.Constant):
                             screen = val.args[0].value
-                            return f'extern void bk_navigate(int screen_index); bk_navigate(1); /* navigate to {screen} */'
+                            return 'extern void bk_navigate(int screen_index); bk_navigate(1);'
                     if val.func.attr == "pop":
                         return "extern void bk_navigate(int screen_index); bk_navigate(0);"
+                    if val.func.attr == "fetch" and val.args:
+                        if isinstance(val.args[0], ast.Constant):
+                            url = val.args[0].value
+                            rid = abs(hash(url)) % 9999
+                            return ('extern void bk_http_get(const char* url, int rid, void* s); '
+                                    'bk_http_get("' + url + '", ' + str(rid) + ', self);')
+                    if val.func.attr == "post" and val.args:
+                        if isinstance(val.args[0], ast.Constant):
+                            url = val.args[0].value
+                            rid = abs(hash(url)) % 9999
+                            return ('extern void bk_http_post(const char* url, const char* body, int rid, void* s); '
+                                    'bk_http_post("' + url + '", "{}", ' + str(rid) + ', self);')
 
         # self.count += 1
         if isinstance(stmt, ast.AugAssign):

@@ -16,6 +16,10 @@ public class BlinkUIBridge {
     public native void   nativeTextChange(int nodeId, String text);
     public native String nativeGetTabConfig();
     public native String nativeGetTabTree(int tabIndex);
+    public native void   nativeHttpResponse(int requestId, int status, String body);
+    public native void   nativeHttpGet(String url, int requestId);
+    public native void   nativeShowToast(String message, String type, int duration);
+    public native void   nativeHttpPost(String url, String body, int requestId);
 
     private static BlinkUIBridge instance;
     public static BlinkUIBridge getInstance() {

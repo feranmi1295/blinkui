@@ -121,6 +121,13 @@ void bk_node_set_text(BKNode* node, const char* text);
 /* Set background color */
 void bk_node_set_background(BKNode* node, uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 
+/* Show a toast notification */
+void bk_toast(const char* message, const char* type);
+#define BK_TOAST_SUCCESS "success"
+#define BK_TOAST_ERROR   "error"
+#define BK_TOAST_INFO    "info"
+#define BK_TOAST_WARNING "warning"
+
 /* Set the render callback (called by Android bridge) */
 void bk_set_render_callback(void (*cb)(void* screen));
 
@@ -159,6 +166,13 @@ BKNode* bk_divider(int node_id);
    Called by event handlers after state change
 ───────────────────────────────────────── */
 void bk_request_render(void* screen);
+
+/* Show a toast notification */
+void bk_toast(const char* message, const char* type);
+#define BK_TOAST_SUCCESS "success"
+#define BK_TOAST_ERROR   "error"
+#define BK_TOAST_INFO    "info"
+#define BK_TOAST_WARNING "warning"
 
 /* Set the render callback (called by Android bridge) */
 void bk_set_render_callback(void (*cb)(void* screen));

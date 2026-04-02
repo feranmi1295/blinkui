@@ -46,6 +46,9 @@ public class ComponentFactory {
                 case "List":
                 case "ListView":     return buildScrollView(node, id);
                 case "Modal":        return buildModalTrigger(node, id);
+                case "Image":
+                case "Avatar":       return buildImage(node, id);
+                case "Icon":         return buildIcon(node, id);
                 case "ListItem":     return buildListItem(node, id);
                 default:             return new View(context);
             }
@@ -327,6 +330,88 @@ public class ComponentFactory {
         lp.bottomMargin = dpToPx(8);
         divider.setLayoutParams(lp);
         return divider;
+    }
+
+    // ── Image ──
+    private View buildImage(JSONObject node, int nodeId) throws Exception {
+        android.widget.ImageView iv = new android.widget.ImageView(context);
+        iv.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+
+        int width  = node.optInt("width",  -1);
+        int height = node.optInt("height", 200);
+        int radius = node.optInt("corner_radius", 0);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            width == -1 ? ViewGroup.LayoutParams.MATCH_PARENT : dpToPx(width),
+            dpToPx(height)
+        );
+        lp.topMargin    = dpToPx(8);
+        lp.bottomMargin = dpToPx(8);
+        iv.setLayoutParams(lp);
+
+        // rounded corners via outline
+        if (radius > 0) {
+            iv.setClipToOutline(true);
+            android.graphics.drawable.GradientDrawable bg =
+                new android.graphics.drawable.GradientDrawable();
+            bg.setCornerRadius(dpToPx(radius));
+            bg.setColor(parseColor("#1A1A1A"));
+            iv.setBackground(bg);
+        } else {
+            iv.setBackgroundColor(parseColor("#1A1A1A"));
+        }
+
+        // load image from URL
+        String src = node.optString("src", node.optString("url", ""));
+        if (!src.isEmpty()) {
+            BlinkUIImageLoader.load(src, iv);
+        }
+
+        return iv;
+    }
+
+    // ── Icon (text-based using Unicode) ──
+    private View buildIcon(JSONObject node, int nodeId) throws Exception {
+        TextView tv = new TextView(context);
+        String name = node.optString("name", "●");
+        int    size = node.optInt("size", 24);
+
+        // map common icon names to Unicode symbols
+        String symbol = iconSymbol(name);
+        tv.setText(symbol);
+        tv.setTextSize(size);
+        tv.setTextColor(parseColor(node.optString("color", "#00FF88")));
+        tv.setGravity(android.view.Gravity.CENTER);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            dpToPx(size + 8), dpToPx(size + 8)
+        );
+        tv.setLayoutParams(lp);
+        return tv;
+    }
+
+    private String iconSymbol(String name) {
+        switch (name.toLowerCase()) {
+            case "home":     return "⌂";
+            case "search":   return "⌕";
+            case "user":
+            case "profile":  return "◉";
+            case "settings": return "⚙";
+            case "back":     return "←";
+            case "forward":  return "→";
+            case "add":
+            case "plus":     return "+";
+            case "close":
+            case "x":        return "✕";
+            case "check":    return "✓";
+            case "heart":    return "♥";
+            case "star":     return "★";
+            case "bell":     return "🔔";
+            case "chat":     return "◎";
+            case "camera":   return "⊙";
+            case "menu":     return "≡";
+            default:         return name;
+        }
     }
 
     // ── Modal trigger button ──

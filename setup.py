@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="blinkui",
-    version="0.1.0",
+    version="0.2.0",
     description="Build mobile apps in pure Python",
     packages=find_packages(),
     entry_points={

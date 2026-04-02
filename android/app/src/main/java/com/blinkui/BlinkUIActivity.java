@@ -31,6 +31,9 @@ public class BlinkUIActivity extends Activity {
 
     // hot reload
     private HotReloadClient hotReloadClient;
+
+    // network
+    private BlinkUINetwork network;
     private static final String HOT_RELOAD_IP = ""; // set your laptop IP here
 
     // tab navigation
@@ -57,6 +60,7 @@ public class BlinkUIActivity extends Activity {
 
         bridge.nativeInit();
         bridge.nativeSetActivity(this);
+        network = new BlinkUINetwork(this);
 
         startAnimationLoop();
 
@@ -226,6 +230,15 @@ public class BlinkUIActivity extends Activity {
     }
 
     // ── Modal ──
+    public BlinkUIBridge getBridge() { return bridge; }
+
+    public void showToast(String message, String type, int duration) {
+        handler.post(() ->
+            BlinkUIToast.show(this, rootView, message, type, duration)
+        );
+    }
+    public BlinkUINetwork getNetwork() { return network; }
+
     public void showModal(String title, String message,
                           String confirm, String cancel,
                           Runnable onConfirm) {
