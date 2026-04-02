@@ -214,6 +214,16 @@ public class BlinkUIActivity extends Activity {
         ).start();
     }
 
+    // ── Modal ──
+    public void showModal(String title, String message,
+                          String confirm, String cancel,
+                          Runnable onConfirm) {
+        handler.post(() -> {
+            BlinkUIModal modal = new BlinkUIModal(this, rootView);
+            modal.show(title, message, confirm, cancel, onConfirm, null);
+        });
+    }
+
     public void handleTextChange(int nodeId, String text) {
         new Thread(() ->
             bridge.nativeTextChange(nodeId, text)

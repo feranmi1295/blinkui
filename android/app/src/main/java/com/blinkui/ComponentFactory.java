@@ -45,6 +45,7 @@ public class ComponentFactory {
                 case "Spacer":       return buildSpacer(node, id);
                 case "List":
                 case "ListView":     return buildScrollView(node, id);
+                case "Modal":        return buildModalTrigger(node, id);
                 case "ListItem":     return buildListItem(node, id);
                 default:             return new View(context);
             }
@@ -326,6 +327,45 @@ public class ComponentFactory {
         lp.bottomMargin = dpToPx(8);
         divider.setLayoutParams(lp);
         return divider;
+    }
+
+    // ── Modal trigger button ──
+    private View buildModalTrigger(JSONObject node, final int nodeId) throws Exception {
+        Button btn = new Button(context);
+        String label = node.optString("label", node.optString("title", "Open"));
+        btn.setText(label);
+        btn.setAllCaps(false);
+        btn.setTextSize(16);
+        btn.setTypeface(null, android.graphics.Typeface.BOLD);
+        btn.setTextColor(parseColor("#0F0F0F"));
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(parseColor("#00FF88"));
+        bg.setCornerRadius(dpToPx(10));
+        btn.setBackground(bg);
+
+        String title   = node.optString("title", "Confirm");
+        String message = node.optString("message", "");
+        String confirm = node.optString("confirm", "Confirm");
+        String cancel  = node.optString("cancel", "Cancel");
+
+        btn.setOnClickListener(v -> {
+            BlinkUIActivity.animateButtonPress(v);
+            v.postDelayed(() ->
+                activity.showModal(title, message, confirm, cancel,
+                    () -> activity.handleEvent(nodeId, BlinkUIBridge.EVENT_TAP)
+                ), 80
+            );
+        });
+
+        applyPadding(btn, node);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        lp.topMargin = dpToPx(8);
+        btn.setLayoutParams(lp);
+        return btn;
     }
 
     // ── ListItem ──
