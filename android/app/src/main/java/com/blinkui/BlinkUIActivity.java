@@ -29,6 +29,10 @@ public class BlinkUIActivity extends Activity {
     private int  prevScreen   = -1;
     private boolean animating = false;
 
+    // hot reload
+    private HotReloadClient hotReloadClient;
+    private static final String HOT_RELOAD_IP = ""; // set your laptop IP here
+
     // tab navigation
     private TabBarManager tabManager;
     private LinearLayout  contentArea;
@@ -55,6 +59,13 @@ public class BlinkUIActivity extends Activity {
         bridge.nativeSetActivity(this);
 
         startAnimationLoop();
+
+        // start hot reload when IP is configured
+        if (!HOT_RELOAD_IP.isEmpty()) {
+            hotReloadClient = new HotReloadClient(this);
+            hotReloadClient.connect(HOT_RELOAD_IP);
+            android.util.Log.i(TAG, "Hot reload connecting to " + HOT_RELOAD_IP);
+        }
 
         // check if app uses tab navigation
         String tabConfig = bridge.nativeGetTabConfig();
