@@ -50,6 +50,11 @@ public class ComponentFactory {
                 case "Image":
                 case "Avatar":        return buildImage(node, id);
                 case "Icon":          return buildIcon(node, id);
+                case "SmartList":     return buildSmartList(node, id);
+                case "AICard":        return buildAICard(node, id);
+                case "SmartForm":     return buildSmartForm(node, id);
+                case "AutoStyle":     return buildAutoStyle(node, id);
+                case "SmartText":     return buildSmartText(node, id);
                 default:              return new View(context);
             }
         } catch (Exception e) {
@@ -415,6 +420,317 @@ public class ComponentFactory {
             case "code":       return "</>";
             default:           return name;
         }
+    }
+
+    // ── AI-Native Components ──
+
+    private View buildSmartList(JSONObject node, int nodeId) throws Exception {
+        // SmartList — auto-renders list data with detected template
+        LinearLayout container = new LinearLayout(context);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setBackgroundColor(parseColor("#0F0F0F"));
+
+        String template = node.optString("template", "row_text");
+        org.json.JSONArray items = node.optJSONArray("items");
+
+        if (items == null || items.length() == 0) {
+            // empty state
+            TextView empty = new TextView(context);
+            empty.setText("No items yet");
+            empty.setTextColor(parseColor("#555555"));
+            empty.setTextSize(14);
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(0, dpToPx(32), 0, dpToPx(32));
+            container.addView(empty);
+            return container;
+        }
+
+        for (int i = 0; i < items.length(); i++) {
+            View item = buildSmartListItem(items.get(i), template, nodeId * 100 + i);
+            container.addView(item);
+        }
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        container.setLayoutParams(lp);
+        return container;
+    }
+
+    private View buildSmartListItem(Object data, String template, int nodeId) {
+        LinearLayout item = new LinearLayout(context);
+        item.setOrientation(LinearLayout.HORIZONTAL);
+        item.setGravity(Gravity.CENTER_VERTICAL);
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(parseColor("#1A1A1A"));
+        bg.setCornerRadius(dpToPx(10));
+        item.setBackground(bg);
+        item.setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14));
+
+        // accent bar
+        View accent = new View(context);
+        GradientDrawable accentBg = new GradientDrawable();
+        accentBg.setColor(parseColor("#00FF88"));
+        accentBg.setCornerRadius(dpToPx(2));
+        accent.setBackground(accentBg);
+        LinearLayout.LayoutParams accentLp = new LinearLayout.LayoutParams(dpToPx(3), dpToPx(40));
+        accentLp.rightMargin = dpToPx(12);
+        accent.setLayoutParams(accentLp);
+        item.addView(accent);
+
+        // content
+        LinearLayout content = new LinearLayout(context);
+        content.setOrientation(LinearLayout.VERTICAL);
+
+        TextView title = new TextView(context);
+        String titleText = "";
+        if (data instanceof String) {
+            titleText = (String) data;
+        } else if (data instanceof org.json.JSONObject) {
+            try {
+                org.json.JSONObject obj = (org.json.JSONObject) data;
+                titleText = obj.optString("title", obj.optString("name",
+                            obj.optString("label", obj.toString())));
+            } catch (Exception e) { titleText = data.toString(); }
+        } else {
+            titleText = data.toString();
+        }
+
+        title.setText(titleText);
+        title.setTextColor(parseColor("#FFFFFF"));
+        title.setTextSize(15);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        content.addView(title);
+
+        item.addView(content);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dpToPx(8);
+        item.setLayoutParams(lp);
+
+        int nid = nodeId;
+        item.setOnClickListener(v -> {
+            BlinkUIActivity.animateButtonPress(v);
+            v.postDelayed(() -> activity.handleEvent(nid, BlinkUIBridge.EVENT_TAP), 80);
+        });
+
+        return item;
+    }
+
+    private View buildAICard(JSONObject node, int nodeId) throws Exception {
+        // AICard — generates card UI from prompt
+        String prompt = node.optString("prompt", "");
+        String type   = detectCardType(prompt);
+
+        LinearLayout card = new LinearLayout(context);
+        card.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(parseColor("#1A1A1A"));
+        bg.setCornerRadius(dpToPx(16));
+        bg.setStroke(dpToPx(1), parseColor("#2A2A2A"));
+        card.setBackground(bg);
+        card.setElevation(dpToPx(4));
+        card.setPadding(dpToPx(20), dpToPx(20), dpToPx(20), dpToPx(20));
+
+        // AI-generated header
+        View accentLine = new View(context);
+        GradientDrawable accentBg = new GradientDrawable();
+        accentBg.setColor(parseColor("#00FF88"));
+        accentBg.setCornerRadius(dpToPx(2));
+        accentLine.setBackground(accentBg);
+        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(dpToPx(32), dpToPx(3));
+        alp.bottomMargin = dpToPx(16);
+        accentLine.setLayoutParams(alp);
+        card.addView(accentLine);
+
+        // prompt as subtitle
+        TextView promptLabel = new TextView(context);
+        promptLabel.setText("✦ " + prompt);
+        promptLabel.setTextColor(parseColor("#00FF88"));
+        promptLabel.setTextSize(11);
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        plp.bottomMargin = dpToPx(8);
+        promptLabel.setLayoutParams(plp);
+        card.addView(promptLabel);
+
+        // render children if present
+        org.json.JSONArray children = node.optJSONArray("children");
+        if (children != null) {
+            for (int i = 0; i < children.length(); i++) {
+                org.json.JSONObject child = children.getJSONObject(i);
+                card.addView(buildView(child, nodeId * 100 + i));
+            }
+        } else {
+            // placeholder content
+            TextView placeholder = new TextView(context);
+            placeholder.setText("AI-generated: " + type);
+            placeholder.setTextColor(parseColor("#555555"));
+            placeholder.setTextSize(13);
+            card.addView(placeholder);
+        }
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = dpToPx(12);
+        card.setLayoutParams(lp);
+        return card;
+    }
+
+    private String detectCardType(String prompt) {
+        String p = prompt.toLowerCase();
+        if (p.contains("profile") || p.contains("user")) return "profile";
+        if (p.contains("product") || p.contains("price")) return "product";
+        if (p.contains("stat") || p.contains("metric")) return "stats";
+        if (p.contains("weather")) return "weather";
+        return "info";
+    }
+
+    private View buildSmartForm(JSONObject node, int nodeId) throws Exception {
+        LinearLayout form = new LinearLayout(context);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setBackgroundColor(parseColor("#0F0F0F"));
+
+        org.json.JSONArray fields = node.optJSONArray("fields");
+        if (fields != null) {
+            for (int i = 0; i < fields.length(); i++) {
+                String fieldName = fields.getString(i);
+                View field = buildSmartField(fieldName, nodeId * 100 + i);
+                form.addView(field);
+            }
+        }
+
+        // submit button
+        Button submit = new Button(context);
+        submit.setText(node.optString("submit_label", "Submit"));
+        submit.setAllCaps(false);
+        submit.setTextSize(16);
+        submit.setTypeface(null, android.graphics.Typeface.BOLD);
+        submit.setTextColor(parseColor("#0F0F0F"));
+        GradientDrawable submitBg = new GradientDrawable();
+        submitBg.setColor(parseColor("#00FF88"));
+        submitBg.setCornerRadius(dpToPx(10));
+        submit.setBackground(submitBg);
+        submit.setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(14));
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        slp.topMargin = dpToPx(16);
+        submit.setLayoutParams(slp);
+        int nid = nodeId;
+        submit.setOnClickListener(v -> {
+            BlinkUIActivity.animateButtonPress(v);
+            v.postDelayed(() -> activity.handleEvent(nid, BlinkUIBridge.EVENT_TAP), 80);
+        });
+        form.addView(submit);
+
+        return form;
+    }
+
+    private View buildSmartField(String fieldName, int nodeId) {
+        LinearLayout wrapper = new LinearLayout(context);
+        wrapper.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        wlp.bottomMargin = dpToPx(12);
+        wrapper.setLayoutParams(wlp);
+
+        // label
+        TextView label = new TextView(context);
+        String labelText = fieldName.substring(0, 1).toUpperCase() +
+                          fieldName.substring(1).replace("_", " ");
+        label.setText(labelText);
+        label.setTextColor(parseColor("#999999"));
+        label.setTextSize(12);
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        llp.bottomMargin = dpToPx(4);
+        label.setLayoutParams(llp);
+        wrapper.addView(label);
+
+        // input
+        android.widget.EditText input = new android.widget.EditText(context);
+        String f = fieldName.toLowerCase();
+        if (f.contains("password") || f.contains("pass")) {
+            input.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                               android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        } else if (f.contains("email")) {
+            input.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                               android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        } else if (f.contains("phone") || f.contains("mobile")) {
+            input.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
+        } else if (f.contains("age") || f.contains("count") || f.contains("amount")) {
+            input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        }
+
+        input.setHint("Enter " + labelText.toLowerCase());
+        input.setHintTextColor(parseColor("#444444"));
+        input.setTextColor(parseColor("#FFFFFF"));
+        input.setTextSize(15);
+        GradientDrawable inputBg = new GradientDrawable();
+        inputBg.setColor(parseColor("#1A1A1A"));
+        inputBg.setCornerRadius(dpToPx(8));
+        inputBg.setStroke(dpToPx(1), parseColor("#2A2A2A"));
+        input.setBackground(inputBg);
+        input.setPadding(dpToPx(14), dpToPx(12), dpToPx(14), dpToPx(12));
+        wrapper.addView(input);
+
+        return wrapper;
+    }
+
+    private View buildAutoStyle(JSONObject node, int nodeId) throws Exception {
+        // render child with auto-detected styling
+        org.json.JSONArray children = node.optJSONArray("children");
+        if (children != null && children.length() > 0) {
+            return buildView(children.getJSONObject(0), nodeId);
+        }
+        return buildText(node, nodeId, 16, false);
+    }
+
+    private View buildSmartText(JSONObject node, int nodeId) throws Exception {
+        String value  = node.optString("content", "");
+        String format = node.optString("format", detectFormat(value));
+
+        TextView tv = new TextView(context);
+        tv.setTextSize(node.optInt("font_size", 16));
+        tv.setLayoutParams(new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        switch (format) {
+            case "currency":
+                tv.setText(value);
+                tv.setTextColor(parseColor("#00FF88"));
+                tv.setTypeface(null, android.graphics.Typeface.BOLD);
+                break;
+            case "error":
+                tv.setText("⚠ " + value);
+                tv.setTextColor(parseColor("#FF3B30"));
+                break;
+            case "success":
+                tv.setText("✓ " + value);
+                tv.setTextColor(parseColor("#00FF88"));
+                break;
+            case "percentage":
+                tv.setText(value);
+                tv.setTextColor(parseColor("#0A84FF"));
+                tv.setTypeface(null, android.graphics.Typeface.BOLD);
+                break;
+            default:
+                tv.setText(value);
+                tv.setTextColor(parseColor("#FFFFFF"));
+        }
+        return tv;
+    }
+
+    private String detectFormat(String value) {
+        if (value.startsWith("$") || value.startsWith("₦")) return "currency";
+        if (value.toLowerCase().contains("error")) return "error";
+        if (value.toLowerCase().contains("success")) return "success";
+        try {
+            double d = Double.parseDouble(value.replace("%",""));
+            if (value.endsWith("%")) return "percentage";
+        } catch (Exception ignored) {}
+        return "text";
     }
 
     private void applyBackground(View view, JSONObject node) {
