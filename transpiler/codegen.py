@@ -38,6 +38,8 @@ COMPONENT_MAP = {
     "Slider":      "bk_slider",
     "List":        "bk_scroll",
     "ListView":    "bk_scroll",
+    "Icon":        "bk_text",
+    "Avatar":      "bk_image",
 }
 
 # ── Code Generator ──
