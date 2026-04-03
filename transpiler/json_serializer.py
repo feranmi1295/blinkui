@@ -10,11 +10,35 @@ Supports method chaining: .spacing(), .padding(), .bold(),
 
 import ast
 import sys
+import os
 sys.path.insert(0, ".")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from parser import ScreenDef, StateVar
 from type_inferrer import TypeInferrer
 from codegen import CCodeGenerator, COMPONENT_MAP
+
+# import theme if available
+try:
+    from blinkui.theme import get_theme
+    _theme = get_theme()
+    _BG       = _theme.background
+    _SURFACE  = _theme.surface
+    _ACCENT   = _theme.accent
+    _TEXT     = _theme.text
+    _TEXT2    = _theme.text_secondary
+    _DANGER   = _theme.danger
+    _BORDER   = _theme.border
+    _ON_ACCENT = _theme.text_on_accent
+except ImportError:
+    _BG       = "#0F0F0F"
+    _SURFACE  = "#1A1A1A"
+    _ACCENT   = "#00FF88"
+    _TEXT     = "#FFFFFF"
+    _TEXT2    = "#999999"
+    _DANGER   = "#FF3B30"
+    _BORDER   = "#2A2A2A"
+    _ON_ACCENT = "#0F0F0F"
 
 # ── Method chain extractor ──
 
@@ -248,7 +272,7 @@ char* {screen.name}_get_tree({screen.name}* self) {{
         defaults = {
             "VStack": {
                 "padding":        [16, 16, 16, 16],
-                "background":     "#0F0F0F",
+                "background":     _BG,
                 "corner_radius":  0,
                 "opacity":        1.0,
                 "visible":        True,
@@ -256,7 +280,7 @@ char* {screen.name}_get_tree({screen.name}* self) {{
             },
             "HStack": {
                 "padding":        [0, 0, 0, 0],
-                "background":     "#0F0F0F",
+                "background":     _BG,
                 "corner_radius":  0,
                 "opacity":        1.0,
                 "visible":        True,
@@ -265,7 +289,7 @@ char* {screen.name}_get_tree({screen.name}* self) {{
             "Text": {
                 "font_size":  16,
                 "bold":       False,
-                "color":      "#FFFFFF",
+                "color":      _TEXT,
                 "padding":    [0, 0, 8, 0],
                 "margin":     [0, 0, 0, 0],
                 "opacity":    1.0,
@@ -274,7 +298,7 @@ char* {screen.name}_get_tree({screen.name}* self) {{
             "Heading": {
                 "font_size":  28,
                 "bold":       True,
-                "color":      "#FFFFFF",
+                "color":      _TEXT,
                 "padding":    [0, 0, 12, 0],
                 "margin":     [0, 0, 0, 0],
                 "opacity":    1.0,
@@ -283,15 +307,15 @@ char* {screen.name}_get_tree({screen.name}* self) {{
             "Label": {
                 "font_size":  14,
                 "bold":       False,
-                "color":      "#999999",
+                "color":      _TEXT2,
                 "padding":    [0, 0, 4, 0],
                 "margin":     [0, 0, 0, 0],
                 "opacity":    1.0,
                 "visible":    True,
             },
             "Button": {
-                "background":    "#00FF88",
-                "color":         "#0F0F0F",
+                "background":    _ACCENT,
+                "color":         _BG,
                 "corner_radius": 6,
                 "font_size":     18,
                 "bold":          True,
@@ -301,7 +325,7 @@ char* {screen.name}_get_tree({screen.name}* self) {{
                 "visible":       True,
             },
             "Card": {
-                "background":    "#1A1A1A",
+                "background":    _SURFACE,
                 "corner_radius": 12,
                 "opacity":       1.0,
                 "visible":       True,
@@ -310,8 +334,8 @@ char* {screen.name}_get_tree({screen.name}* self) {{
             },
             "TextField": {
                 "font_size":     16,
-                "color":         "#FFFFFF",
-                "background":    "#1A1A1A",
+                "color":         _TEXT,
+                "background":    _SURFACE,
                 "corner_radius": 8,
                 "padding":       [14, 16, 14, 16],
                 "margin":        [8, 0, 0, 0],
@@ -319,7 +343,7 @@ char* {screen.name}_get_tree({screen.name}* self) {{
                 "visible":       True,
             },
             "Divider": {
-                "background": "#2A2A2A",
+                "background": _BORDER,
                 "padding":    [0, 0, 0, 0],
                 "margin":     [8, 0, 8, 0],
                 "opacity":    1.0,
@@ -335,8 +359,8 @@ char* {screen.name}_get_tree({screen.name}* self) {{
             "NavigationBar": {
                 "font_size":  20,
                 "bold":       True,
-                "color":      "#FFFFFF",
-                "background": "#0F0F0F",
+                "color":      _TEXT,
+                "background": _BG,
                 "padding":    [12, 16, 12, 16],
                 "margin":     [0, 0, 0, 0],
                 "opacity":    1.0,
