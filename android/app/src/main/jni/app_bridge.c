@@ -1,8 +1,3 @@
-// ─────────────────────────────────────────
-// BlinkUI App Bridge
-// Connects transpiled screen .so to Android
-// ─────────────────────────────────────────
-
 #include <jni.h>
 #include <android/log.h>
 #include <stdlib.h>
@@ -12,34 +7,50 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-// ── Forward declarations from generated C ──
-// These are compiled into the same .so by CMake
+// ── Forward declarations ──
+typedef struct _ChatsScreen   ChatsScreen;
+typedef struct _ChatScreen    ChatScreen;
+typedef struct _StatusScreen  StatusScreen;
+typedef struct _CallsScreen   CallsScreen;
+typedef struct _ProfileScreen ProfileScreen;
 
-typedef struct _HomeScreen HomeScreen;
-HomeScreen* HomeScreen_init(void);
-char*       HomeScreen_get_tree(HomeScreen* self);
-void        HomeScreen_on_event(HomeScreen* self, int node_id, int event_type);
+ChatsScreen*   ChatsScreen_init(void);
+char*          ChatsScreen_get_tree(ChatsScreen* self);
+void           ChatsScreen_on_event(ChatsScreen* self, int node_id, int event_type);
 
-typedef struct _DetailScreen DetailScreen;
-DetailScreen* DetailScreen_init(void);
-char*         DetailScreen_get_tree(DetailScreen* self);
-void          DetailScreen_on_event(DetailScreen* self, int node_id, int event_type);
+ChatScreen*    ChatScreen_init(void);
+char*          ChatScreen_get_tree(ChatScreen* self);
+void           ChatScreen_on_event(ChatScreen* self, int node_id, int event_type);
+
+StatusScreen*  StatusScreen_init(void);
+char*          StatusScreen_get_tree(StatusScreen* self);
+void           StatusScreen_on_event(StatusScreen* self, int node_id, int event_type);
+
+CallsScreen*   CallsScreen_init(void);
+char*          CallsScreen_get_tree(CallsScreen* self);
+void           CallsScreen_on_event(CallsScreen* self, int node_id, int event_type);
+
+ProfileScreen* ProfileScreen_init(void);
+char*          ProfileScreen_get_tree(ProfileScreen* self);
+void           ProfileScreen_on_event(ProfileScreen* self, int node_id, int event_type);
 
 // ── Global state ──
-static JavaVM* g_jvm         = NULL;
-static jobject g_activity     = NULL;
-static HomeScreen*   g_home   = NULL;
-static DetailScreen* g_detail = NULL;
-static int g_current_screen   = 0; // 0=home, 1=detail
+static JavaVM*        g_jvm      = NULL;
+static jobject        g_activity = NULL;
+static ChatsScreen*   g_chats    = NULL;
+static ChatScreen*    g_chat     = NULL;
+static StatusScreen*  g_status   = NULL;
+static CallsScreen*   g_calls    = NULL;
+static ProfileScreen* g_profile  = NULL;
+static int            g_screen   = 0;
+// 0=chats 1=chat 2=status 3=calls 4=profile
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     g_jvm = vm;
-    LOGI("BlinkUI App Bridge loaded");
     return JNI_VERSION_1_6;
 }
 
-// Call Java renderTree() from C
-static void call_render(const char* tree_json) {
+static void call_render(const char* json) {
     if (!g_jvm || !g_activity) return;
     JNIEnv* env;
     int attached = 0;
@@ -47,45 +58,34 @@ static void call_render(const char* tree_json) {
         (*g_jvm)->AttachCurrentThread(g_jvm, &env, NULL);
         attached = 1;
     }
-    jclass    cls    = (*env)->GetObjectClass(env, g_activity);
-    jmethodID method = (*env)->GetMethodID(env, cls, "renderTree", "(Ljava/lang/String;)V");
-    if (method) {
-        jstring json = (*env)->NewStringUTF(env, tree_json);
-        (*env)->CallVoidMethod(env, g_activity, method, json);
-        (*env)->DeleteLocalRef(env, json);
+    jclass    cls = (*env)->GetObjectClass(env, g_activity);
+    jmethodID m   = (*env)->GetMethodID(env, cls, "renderTree", "(Ljava/lang/String;)V");
+    if (m) {
+        jstring js = (*env)->NewStringUTF(env, json);
+        (*env)->CallVoidMethod(env, g_activity, m, js);
+        (*env)->DeleteLocalRef(env, js);
     }
     if (attached) (*g_jvm)->DetachCurrentThread(g_jvm);
 }
 
-// bk_request_render — called by generated handlers
 void bk_request_render(void* screen) {
     char* tree = NULL;
-    if (g_current_screen == 0 && g_home) {
-        tree = HomeScreen_get_tree(g_home);
-    } else if (g_current_screen == 1 && g_detail) {
-        tree = DetailScreen_get_tree(g_detail);
+    switch (g_screen) {
+        case 0: if (g_chats)   tree = ChatsScreen_get_tree(g_chats);   break;
+        case 1: if (g_chat)    tree = ChatScreen_get_tree(g_chat);     break;
+        case 2: if (g_status)  tree = StatusScreen_get_tree(g_status); break;
+        case 3: if (g_calls)   tree = CallsScreen_get_tree(g_calls);   break;
+        case 4: if (g_profile) tree = ProfileScreen_get_tree(g_profile);break;
     }
-    if (tree) {
-        LOGI("Re-rendering after state change");
-        // call renderTree for crossfade animation
-        call_render(tree);
-    }
+    if (tree) call_render(tree);
 }
 
-// bk_navigate — called by go_detail, go_back etc
 void bk_navigate(int screen_index) {
-    g_current_screen = screen_index;
+    g_screen = screen_index;
+    bk_request_render(NULL);
+}
 
-    // get new tree
-    char* tree = NULL;
-    if (screen_index == 0 && g_home) {
-        tree = HomeScreen_get_tree(g_home);
-    } else if (screen_index == 1 && g_detail) {
-        tree = DetailScreen_get_tree(g_detail);
-    }
-    if (!tree) return;
-
-    // call navigateTo on activity for animated transition
+void bk_toast(const char* message, const char* type) {
     if (!g_jvm || !g_activity) return;
     JNIEnv* env;
     int attached = 0;
@@ -93,17 +93,16 @@ void bk_navigate(int screen_index) {
         (*g_jvm)->AttachCurrentThread(g_jvm, &env, NULL);
         attached = 1;
     }
-    jclass    cls    = (*env)->GetObjectClass(env, g_activity);
-    jmethodID method = (*env)->GetMethodID(env, cls, "navigateTo", "(I)V");
-    if (method) {
-        (*env)->CallVoidMethod(env, g_activity, method, (jint)screen_index);
-    }
-    // store tree for navigateTo to use
-    call_render(tree);
+    jstring jmsg  = (*env)->NewStringUTF(env, message);
+    jstring jtype = (*env)->NewStringUTF(env, type);
+    jclass    cls = (*env)->GetObjectClass(env, g_activity);
+    jmethodID m   = (*env)->GetMethodID(env, cls,
+        "showToast", "(Ljava/lang/String;Ljava/lang/String;I)V");
+    if (m) (*env)->CallVoidMethod(env, g_activity, m, jmsg, jtype, (jint)2500);
+    (*env)->DeleteLocalRef(env, jmsg);
+    (*env)->DeleteLocalRef(env, jtype);
     if (attached) (*g_jvm)->DetachCurrentThread(g_jvm);
 }
-
-// ── JNI methods ──
 
 JNIEXPORT void JNICALL
 Java_com_blinkui_BlinkUIBridge_nativeSetActivity(
@@ -117,21 +116,21 @@ JNIEXPORT jstring JNICALL
 Java_com_blinkui_BlinkUIBridge_nativeInit(
     JNIEnv* env, jobject thiz
 ) {
-    // init all screens
-    g_home   = HomeScreen_init();
-    g_detail = DetailScreen_init();
-    LOGI("Screens initialized: home=%p detail=%p", g_home, g_detail);
-    return (*env)->NewStringUTF(env, "BlinkUI screens initialized");
+    g_chats   = ChatsScreen_init();
+    g_chat    = ChatScreen_init();
+    g_status  = StatusScreen_init();
+    g_calls   = CallsScreen_init();
+    g_profile = ProfileScreen_init();
+    LOGI("WhatsApp clone screens initialized");
+    return (*env)->NewStringUTF(env, "BlinkUI WhatsApp clone ready");
 }
 
 JNIEXPORT jstring JNICALL
 Java_com_blinkui_BlinkUIBridge_nativeGetInitialTree(
     JNIEnv* env, jobject thiz
 ) {
-    if (!g_home) g_home = HomeScreen_init();
-    char* tree = HomeScreen_get_tree(g_home);
-    LOGI("Initial tree: %.80s...", tree);
-    return (*env)->NewStringUTF(env, tree);
+    if (!g_chats) g_chats = ChatsScreen_init();
+    return (*env)->NewStringUTF(env, ChatsScreen_get_tree(g_chats));
 }
 
 JNIEXPORT void JNICALL
@@ -139,143 +138,74 @@ Java_com_blinkui_BlinkUIBridge_nativeFireEvent(
     JNIEnv* env, jobject thiz,
     jint node_id, jint event_type, jfloat x, jfloat y
 ) {
-    LOGI("Event: node=%d type=%d screen=%d", node_id, event_type, g_current_screen);
-
-    if (g_current_screen == 0 && g_home) {
-        HomeScreen_on_event(g_home, node_id, event_type);
-    } else if (g_current_screen == 1 && g_detail) {
-        DetailScreen_on_event(g_detail, node_id, event_type);
+    LOGI("Event: node=%d screen=%d", node_id, g_screen);
+    switch (g_screen) {
+        case 0: if (g_chats)   ChatsScreen_on_event(g_chats, node_id, event_type);   break;
+        case 1: if (g_chat)    ChatScreen_on_event(g_chat, node_id, event_type);     break;
+        case 2: if (g_status)  StatusScreen_on_event(g_status, node_id, event_type); break;
+        case 3: if (g_calls)   CallsScreen_on_event(g_calls, node_id, event_type);   break;
+        case 4: if (g_profile) ProfileScreen_on_event(g_profile, node_id, event_type);break;
     }
 }
 
-JNIEXPORT void JNICALL
-Java_com_blinkui_BlinkUIBridge_nativeRender(
-    JNIEnv* env, jobject thiz, jstring tree_json
-) {}
-
-JNIEXPORT void JNICALL
-Java_com_blinkui_BlinkUIBridge_nativeTick(
-    JNIEnv* env, jobject thiz, jlong delta_ms
-) {}
-
-// Text field change — store value in screen state
-// For now just log it; full binding requires state name map
-// Tab navigation — returns NULL if no tabs configured
 JNIEXPORT jstring JNICALL
 Java_com_blinkui_BlinkUIBridge_nativeGetTabConfig(
     JNIEnv* env, jobject thiz
 ) {
-    // return empty string = no tab navigation (stack nav)
-    // apps with tabs override this by providing tab config
-    return (*env)->NewStringUTF(env, "");
+    return (*env)->NewStringUTF(env,
+        "{\"tabs\":["
+        "{\"label\":\"Chats\", \"icon\":\"chat\"},"
+        "{\"label\":\"Status\",\"icon\":\"star\"},"
+        "{\"label\":\"Calls\", \"icon\":\"phone\"}"
+        "]}"
+    );
 }
 
 JNIEXPORT jstring JNICALL
 Java_com_blinkui_BlinkUIBridge_nativeGetTabTree(
     JNIEnv* env, jobject thiz, jint tab_index
 ) {
-    // return tree for given tab index
-    if (tab_index == 0 && g_home) {
-        g_current_screen = 0;
-        return (*env)->NewStringUTF(env, HomeScreen_get_tree(g_home));
-    } else if (tab_index == 1 && g_detail) {
-        g_current_screen = 1;
-        return (*env)->NewStringUTF(env, DetailScreen_get_tree(g_detail));
+    char* tree = NULL;
+    switch (tab_index) {
+        case 0: g_screen = 0; tree = ChatsScreen_get_tree(g_chats);   break;
+        case 1: g_screen = 2; tree = StatusScreen_get_tree(g_status); break;
+        case 2: g_screen = 3; tree = CallsScreen_get_tree(g_calls);   break;
     }
-    return (*env)->NewStringUTF(env, "{}");
-}
-
-// ── Toast notification ──
-JNIEXPORT void JNICALL
-Java_com_blinkui_BlinkUIBridge_nativeShowToast(
-    JNIEnv* env, jobject thiz,
-    jstring message, jstring type, jint duration
-) {
-    if (!g_activity) return;
-    JNIEnv* e = env;
-    jclass    cls    = (*e)->GetObjectClass(e, g_activity);
-    jmethodID method = (*e)->GetMethodID(e, cls,
-        "showToast", "(Ljava/lang/String;Ljava/lang/String;I)V");
-    if (method) {
-        (*e)->CallVoidMethod(e, g_activity, method, message, type, duration);
-    }
-}
-
-// public C API for screens
-void bk_toast(const char* message, const char* type) {
-    if (!g_jvm || !g_activity) return;
-    JNIEnv* env;
-    int attached = 0;
-    if ((*g_jvm)->GetEnv(g_jvm, (void**)&env, JNI_VERSION_1_6) == JNI_EDETACHED) {
-        (*g_jvm)->AttachCurrentThread(g_jvm, &env, NULL);
-        attached = 1;
-    }
-    jstring jmsg  = (*env)->NewStringUTF(env, message);
-    jstring jtype = (*env)->NewStringUTF(env, type);
-    jclass    cls    = (*env)->GetObjectClass(env, g_activity);
-    jmethodID method = (*env)->GetMethodID(env, cls,
-        "showToast", "(Ljava/lang/String;Ljava/lang/String;I)V");
-    if (method) {
-        (*env)->CallVoidMethod(env, g_activity, method, jmsg, jtype, (jint)2500);
-    }
-    (*env)->DeleteLocalRef(env, jmsg);
-    (*env)->DeleteLocalRef(env, jtype);
-    if (attached) (*g_jvm)->DetachCurrentThread(g_jvm);
-}
-
-// ── HTTP response from Java ──
-JNIEXPORT void JNICALL
-Java_com_blinkui_BlinkUIBridge_nativeHttpResponse(
-    JNIEnv* env, jobject thiz,
-    jint request_id, jint status, jstring body
-) {
-    const char* b = (*env)->GetStringUTFChars(env, body, 0);
-    LOGI("HTTP response: id=%d status=%d body=%.80s", request_id, status, b);
-
-    // TODO: route to screen on_response handler
-    // For now: trigger re-render
-    bk_request_render(NULL);
-
-    (*env)->ReleaseStringUTFChars(env, body, b);
-}
-
-// ── HTTP GET from C ──
-JNIEXPORT void JNICALL
-Java_com_blinkui_BlinkUIBridge_nativeHttpGet(
-    JNIEnv* env, jobject thiz,
-    jstring url, jint request_id
-) {
-    const char* u = (*env)->GetStringUTFChars(env, url, 0);
-    LOGI("HTTP GET: %s [id=%d]", u, request_id);
-    (*env)->ReleaseStringUTFChars(env, url, u);
-
-    // call Java network layer
-    jclass    cls    = (*env)->GetObjectClass(env, g_activity);
-    jmethodID method = (*env)->GetMethodID(env, cls,
-        "getNetwork", "()Lcom/blinkui/BlinkUINetwork;");
-    if (method) {
-        jobject net = (*env)->CallObjectMethod(env, g_activity, method);
-        jclass  nc  = (*env)->GetObjectClass(env, net);
-        jmethodID get = (*env)->GetMethodID(env, nc,
-            "get", "(Ljava/lang/String;I)V");
-        if (get) {
-            (*env)->CallVoidMethod(env, net, get, url, request_id);
-        }
-    }
+    if (!tree) tree = "{}";
+    return (*env)->NewStringUTF(env, tree);
 }
 
 JNIEXPORT void JNICALL
-Java_com_blinkui_BlinkUIBridge_nativeTextChange(
-    JNIEnv* env, jobject thiz, jint node_id, jstring text
-) {
-    const char* str = (*env)->GetStringUTFChars(env, text, 0);
-    LOGI("TextField node=%d value=%s", node_id, str);
-    (*env)->ReleaseStringUTFChars(env, text, str);
-}
+Java_com_blinkui_BlinkUIBridge_nativeRender(
+    JNIEnv* env, jobject thiz, jstring tree_json) {}
+
+JNIEXPORT void JNICALL
+Java_com_blinkui_BlinkUIBridge_nativeTick(
+    JNIEnv* env, jobject thiz, jlong delta_ms) {}
 
 JNIEXPORT jstring JNICALL
 Java_com_blinkui_BlinkUIBridge_nativeGetVersion(
     JNIEnv* env, jobject thiz
 ) {
-    return (*env)->NewStringUTF(env, "0.1.0");
+    return (*env)->NewStringUTF(env, "0.4.0");
 }
+
+JNIEXPORT void JNICALL
+Java_com_blinkui_BlinkUIBridge_nativeHttpResponse(
+    JNIEnv* env, jobject thiz,
+    jint request_id, jint status, jstring body) {}
+
+JNIEXPORT void JNICALL
+Java_com_blinkui_BlinkUIBridge_nativeHttpGet(
+    JNIEnv* env, jobject thiz,
+    jstring url, jint request_id) {}
+
+JNIEXPORT void JNICALL
+Java_com_blinkui_BlinkUIBridge_nativeTextChange(
+    JNIEnv* env, jobject thiz,
+    jint node_id, jstring text) {}
+
+JNIEXPORT void JNICALL
+Java_com_blinkui_BlinkUIBridge_nativeShowToast(
+    JNIEnv* env, jobject thiz,
+    jstring message, jstring type, jint duration) {}

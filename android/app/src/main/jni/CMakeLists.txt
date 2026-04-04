@@ -1,16 +1,19 @@
 cmake_minimum_required(VERSION 3.22)
 project(blinkui_bridge)
 
-set(RUNTIME_DIR /home/abiodunidris/Desktop/BlinkUI/blinkui/runtime)
-set(GENERATED_DIR /home/abiodunidris/Desktop/BlinkUI/blinkui/testapp/.blink/generated/c)
+set(RUNTIME_DIR  /home/abiodunidris/Desktop/BlinkUI/blinkui/runtime)
+set(GENERATED_DIR /home/abiodunidris/Desktop/BlinkUI/apps/whatsapp_clone/.blink/generated/c)
 
 add_library(
     blinkui_bridge
     SHARED
     app_bridge.c
     ${GENERATED_DIR}/global_store.c
-    ${GENERATED_DIR}/HomeScreen.c
-    ${GENERATED_DIR}/DetailScreen.c
+    ${GENERATED_DIR}/ChatsScreen.c
+    ${GENERATED_DIR}/ChatScreen.c
+    ${GENERATED_DIR}/StatusScreen.c
+    ${GENERATED_DIR}/CallsScreen.c
+    ${GENERATED_DIR}/ProfileScreen.c
     ${RUNTIME_DIR}/core/components.c
     ${RUNTIME_DIR}/core/reconciler.c
     ${RUNTIME_DIR}/core/events.c
