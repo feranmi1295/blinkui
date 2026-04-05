@@ -76,7 +76,21 @@ public class ComponentFactory {
                 View childView = buildView(child, childId);
                 LinearLayout.LayoutParams params;
                 if (orientation == LinearLayout.HORIZONTAL) {
-                    params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+                    // check if child has explicit width
+                    int childW = child.optInt("width", -99);
+                    if (childW != -99 && childW > 0) {
+                        // fixed width child (avatar, icon etc)
+                        params = new LinearLayout.LayoutParams(dpToPx(childW), ViewGroup.LayoutParams.WRAP_CONTENT);
+                    } else if (child.optString("type","").equals("Spacer")) {
+                        // spacer takes remaining space
+                        params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+                    } else if (i == 0) {
+                        // first child — wrap content
+                        params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    } else {
+                        // other children share remaining space
+                        params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+                    }
                     if (i > 0) params.leftMargin = spacing;
                 } else {
                     params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -163,8 +177,25 @@ public class ComponentFactory {
         if (!color.isEmpty()) tv.setTextColor(parseColor(color));
         String align = node.optString("text_align", "left");
         if (align.equals("center")) tv.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        // background means it acts as a badge/avatar — fixed size, centered
+        String bg = node.optString("background", "");
+        if (!bg.isEmpty()) {
+            int size = dpToPx(node.optInt("font_size", defaultSize) * 2 + 8);
+            GradientDrawable bgDrawable = new GradientDrawable();
+            bgDrawable.setColor(parseColor(bg));
+            int radius = node.optInt("corner_radius", size / 2);
+            bgDrawable.setCornerRadius(dpToPx(radius > 0 ? radius : size / 2));
+            tv.setBackground(bgDrawable);
+            tv.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
+            tv.setLayoutParams(lp);
+            return tv;
+        }
+
         applyPadding(tv, node);
-        tv.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        tv.setLayoutParams(new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return tv;
     }
 
